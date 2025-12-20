@@ -1,4 +1,4 @@
-##sonetto-rs
+# sonetto-rs
 
 ## What is sonetto-rs?
 
