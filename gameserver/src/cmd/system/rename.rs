@@ -1,9 +1,11 @@
 use crate::error::AppError;
 use crate::packet::ClientPacket;
 use crate::state::ConnectionContext;
-use database::db::user::account::rename_user_and_update_guide;
+use database::db::{
+    game::player_infos::get_player_info_data, user::account::rename_user_and_update_guide,
+};
 use prost::Message;
-use sonettobuf::{CmdId, RenameReply, RenameRequest};
+use sonettobuf::{CmdId, PlayerInfoPush, RenameReply, RenameRequest};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -24,6 +26,23 @@ pub async fn on_rename(
     rename_user_and_update_guide(pool, player_id, &name, guide_id, step_id)
         .await
         .map_err(AppError::from)?;
+
+    let player_info_data = get_player_info_data(pool, player_id)
+        .await
+        .map_err(AppError::from)?
+        .ok_or(AppError::NotLoggedIn)?;
+
+    let player_info = player_info_data.into();
+
+    tracing::info!("Sending PlayerInfoPush update");
+    ctx_guard
+        .send_push(
+            CmdId::PlayerInfoPushCmd,
+            PlayerInfoPush {
+                player_info: Some(player_info),
+            },
+        )
+        .await?;
 
     let reply = RenameReply {
         can_rename: Some(true),

@@ -185,7 +185,7 @@ pub async fn save_hero_group_snapshot(
     groups: Vec<HeroGroupInfo>,
     sort_sub_ids: Vec<i32>,
 ) -> Result<()> {
-    let now = common::time::ServerTime::now_ms() as i64;
+    let now = common::time::ServerTime::now_ms();
 
     // Create or update snapshot
     sqlx::query(

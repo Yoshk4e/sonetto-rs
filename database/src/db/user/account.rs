@@ -1,6 +1,6 @@
 use anyhow::Result;
 use bcrypt::{DEFAULT_COST, hash, verify};
-use sqlx::{Row, Sqlite, SqlitePool, Transaction};
+use sqlx::{Row, Sqlite, SqlitePool, Transaction, prelude::FromRow};
 
 #[derive(Debug, Clone)]
 pub struct UserAccount {
@@ -158,7 +158,7 @@ pub async fn create_user(
     // Create player_state for new user with new timestamp-based schema
     use common::time::ServerTime;
 
-    let now_ms = now as u64;
+    let now_ms = now;
     let server_day = ServerTime::server_day(now_ms);
 
     sqlx::query(
@@ -306,6 +306,25 @@ pub async fn handle_user_login(
             create_user(pool, user_id, email, password, &token_info, now).await
         }
     }
+}
+
+#[derive(FromRow)]
+pub struct UserToken {
+    pub token: String,
+}
+
+pub async fn get_user_token(pool: &SqlitePool, user_id: i64) -> Result<UserToken> {
+    let token = sqlx::query_as::<_, UserToken>(
+        "SELECT token
+         FROM users
+         WHERE id = ?1",
+    )
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or_else(|| anyhow::anyhow!("User not found"))?;
+
+    Ok(token)
 }
 
 pub async fn rename_user_and_update_guide(

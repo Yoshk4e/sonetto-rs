@@ -57,6 +57,7 @@ router! {
     "/patch/60001/version" get patch_version;
     "/receiver/app" post receiver_app;
     "/resource/60001/check" get resource_check;
+    "/query/summon" get summon_query;
 }
 
 router! {

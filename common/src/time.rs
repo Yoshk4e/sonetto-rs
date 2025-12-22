@@ -12,15 +12,15 @@ impl ServerTime {
 
     /// Current time in raw UTC milliseconds (ONLY value you store)
     #[inline]
-    pub fn now_ms() -> u64 {
-        Utc::now().timestamp_millis() as u64
+    pub fn now_ms() -> i64 {
+        Utc::now().timestamp_millis()
     }
 
     /// Convert UTC ms → adjusted DateTime (for comparisons only)
     #[inline]
-    fn adjusted_datetime(timestamp_ms: u64) -> DateTime<Utc> {
+    fn adjusted_datetime(timestamp_ms: i64) -> DateTime<Utc> {
         let utc = Utc
-            .timestamp_millis_opt(timestamp_ms as i64)
+            .timestamp_millis_opt(timestamp_ms)
             .single()
             .expect("invalid UTC timestamp");
 
@@ -33,17 +33,17 @@ impl ServerTime {
 
     /// Server day number (monotonic, safe for equality)
     #[inline]
-    pub fn server_day(timestamp_ms: u64) -> i32 {
+    pub fn server_day(timestamp_ms: i64) -> i32 {
         Self::adjusted_datetime(timestamp_ms).num_days_from_ce()
     }
 
     #[inline]
-    pub fn is_same_day(t1: u64, t2: u64) -> bool {
+    pub fn is_same_day(t1: i64, t2: i64) -> bool {
         Self::server_day(t1) == Self::server_day(t2)
     }
 
     #[inline]
-    pub fn is_new_day(last: u64, now: u64) -> bool {
+    pub fn is_new_day(last: i64, now: i64) -> bool {
         !Self::is_same_day(last, now)
     }
 
@@ -52,15 +52,21 @@ impl ServerTime {
      * ========================= */
 
     #[inline]
-    pub fn server_week(timestamp_ms: u64) -> i32 {
+    pub fn server_week(timestamp_ms: i64) -> i32 {
         let adjusted = Self::adjusted_datetime(timestamp_ms);
         let days = adjusted.timestamp() / 86_400;
         ((days + 3) / 7) as i32 // Monday = week start
     }
 
     #[inline]
-    pub fn is_same_week(t1: u64, t2: u64) -> bool {
+    pub fn is_same_week(t1: i64, t2: i64) -> bool {
         Self::server_week(t1) == Self::server_week(t2)
+    }
+
+    #[inline]
+    pub fn server_weekday(timestamp_ms: i64) -> i32 {
+        let dt = Self::adjusted_datetime(timestamp_ms);
+        dt.weekday().num_days_from_sunday() as i32
     }
 
     /* =========================
@@ -68,7 +74,7 @@ impl ServerTime {
      * ========================= */
 
     #[inline]
-    pub fn server_month(timestamp_ms: u64) -> i32 {
+    pub fn server_month(timestamp_ms: i64) -> i32 {
         let dt = Self::adjusted_datetime(timestamp_ms);
 
         // Example encoding: 2025-12 -> 202512
@@ -76,7 +82,7 @@ impl ServerTime {
     }
 
     #[inline]
-    pub fn is_same_month(t1: u64, t2: u64) -> bool {
+    pub fn is_same_month(t1: i64, t2: i64) -> bool {
         Self::server_month(t1) == Self::server_month(t2)
     }
 }

@@ -28,7 +28,7 @@ pub async fn get_sandbox_settings(pool: &SqlitePool, user_id: i64) -> Result<San
 }
 
 pub async fn record_purchase(pool: &SqlitePool, user_id: i64, charge_id: i32) -> Result<()> {
-    let now = common::time::ServerTime::now_ms() as i64;
+    let now = common::time::ServerTime::now_ms();
 
     sqlx::query(
         r#"

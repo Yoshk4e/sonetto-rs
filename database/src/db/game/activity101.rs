@@ -84,7 +84,7 @@ pub async fn claim_activity101_day(
     activity_id: i32,
     day_id: i32,
 ) -> Result<bool> {
-    let now = common::time::ServerTime::now_ms() as i64;
+    let now = common::time::ServerTime::now_ms();
 
     let rows = sqlx::query(
         "INSERT INTO user_activity101_claims (user_id, activity_id, day_id, claimed_at)

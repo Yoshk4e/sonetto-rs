@@ -2,7 +2,7 @@ mod app;
 
 mod battle;
 mod connection;
-mod encoding;
+mod gacha;
 mod packet;
 mod player;
 
@@ -16,6 +16,8 @@ pub use battle::rewards::generate_dungeon_rewards;
 pub use battle::simulator::BattleSimulator;
 pub use connection::ActiveBattle;
 pub use connection::ConnectionContext;
-pub use encoding::encode_message;
+pub use gacha::{
+    BannerType, GachaResult, GachaState, build_gacha, load_gacha_state, save_gacha_state,
+};
 pub use packet::CommandPacket;
 pub use player::PlayerState;

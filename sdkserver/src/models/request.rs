@@ -145,3 +145,12 @@ pub struct LoadZoneQuery {
     #[serde(rename = "zoneId")]
     pub zone_id: i32,
 }
+
+#[allow(dead_code)]
+#[derive(Deserialize)]
+pub struct SummonQueryReq {
+    #[serde(rename = "userId")]
+    pub user_id: i64,
+    #[serde(rename = "token")]
+    pub token: String,
+}

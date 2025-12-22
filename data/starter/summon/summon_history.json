@@ -1,0 +1,161 @@
+{
+  "msg": "成功",
+  "code": 200,
+  "data": {
+    "pageData": [
+      {
+        "summonType": "10",
+        "luckyBagIds": [],
+        "createTime": "2025-12-11 09:27:01",
+        "poolId": 31151,
+        "gainIds": [3096, 3125, 3096, 3028, 3005, 3055, 3012, 3036, 3096, 3055],
+        "poolType": 3,
+        "poolName": "子夜独角戏"
+      },
+      {
+        "summonType": "10",
+        "luckyBagIds": [],
+        "createTime": "2025-12-11 09:26:56",
+        "poolId": 31151,
+        "gainIds": [3030, 3015, 3030, 3035, 3027, 3027, 3035, 3096, 3035, 3059],
+        "poolType": 3,
+        "poolName": "子夜独角戏"
+      },
+      {
+        "summonType": "10",
+        "luckyBagIds": [],
+        "createTime": "2025-12-11 09:26:47",
+        "poolId": 31151,
+        "gainIds": [3057, 3057, 3012, 3049, 3033, 3014, 3013, 3031, 3028, 3028],
+        "poolType": 3,
+        "poolName": "子夜独角戏"
+      },
+      {
+        "summonType": "10",
+        "luckyBagIds": [],
+        "createTime": "2025-12-11 09:26:38",
+        "poolId": 31151,
+        "gainIds": [3055, 3059, 3030, 3050, 3040, 3012, 3016, 3042, 3036, 3035],
+        "poolType": 3,
+        "poolName": "子夜独角戏"
+      },
+      {
+        "summonType": "10",
+        "luckyBagIds": [],
+        "createTime": "2025-12-11 09:26:32",
+        "poolId": 31151,
+        "gainIds": [3030, 3059, 3012, 3042, 3044, 3015, 3006, 3040, 3035, 3012],
+        "poolType": 3,
+        "poolName": "子夜独角戏"
+      },
+      {
+        "summonType": "10",
+        "luckyBagIds": [],
+        "createTime": "2025-12-11 09:26:24",
+        "poolId": 31151,
+        "gainIds": [3013, 3028, 3006, 3058, 3016, 3033, 3016, 3054, 3059, 3034],
+        "poolType": 3,
+        "poolName": "子夜独角戏"
+      },
+      {
+        "summonType": "10",
+        "luckyBagIds": [],
+        "createTime": "2025-12-11 09:26:17",
+        "poolId": 31151,
+        "gainIds": [3012, 3096, 3096, 3044, 3046, 3040, 3036, 3006, 3040, 3028],
+        "poolType": 3,
+        "poolName": "子夜独角戏"
+      },
+      {
+        "summonType": "10",
+        "luckyBagIds": [],
+        "createTime": "2025-12-11 09:26:01",
+        "poolId": 31151,
+        "gainIds": [3044, 3042, 3055, 3045, 3058, 3037, 3056, 3030, 3045, 3054],
+        "poolType": 3,
+        "poolName": "子夜独角戏"
+      },
+      {
+        "summonType": "10",
+        "luckyBagIds": [],
+        "createTime": "2025-12-11 09:25:52",
+        "poolId": 31151,
+        "gainIds": [3045, 3028, 3017, 3005, 3040, 3018, 3026, 3028, 3050, 3028],
+        "poolType": 3,
+        "poolName": "子夜独角戏"
+      },
+      {
+        "summonType": "10",
+        "luckyBagIds": [],
+        "createTime": "2025-12-11 09:25:47",
+        "poolId": 31151,
+        "gainIds": [3035, 3036, 3018, 3059, 3033, 3030, 3028, 3096, 3027, 3030],
+        "poolType": 3,
+        "poolName": "子夜独角戏"
+      },
+      {
+        "summonType": "10",
+        "luckyBagIds": [],
+        "createTime": "2025-12-11 09:25:36",
+        "poolId": 31151,
+        "gainIds": [3096, 3006, 3013, 3058, 3005, 3045, 3034, 3082, 3034, 3026],
+        "poolType": 3,
+        "poolName": "子夜独角戏"
+      },
+      {
+        "summonType": "10",
+        "luckyBagIds": [],
+        "createTime": "2025-12-11 09:25:31",
+        "poolId": 31151,
+        "gainIds": [3014, 3046, 3046, 3012, 3055, 3050, 3018, 3045, 3096, 3012],
+        "poolType": 3,
+        "poolName": "子夜独角戏"
+      },
+      {
+        "summonType": "10",
+        "luckyBagIds": [],
+        "createTime": "2025-12-11 09:25:16",
+        "poolId": 31151,
+        "gainIds": [3058, 3103, 3054, 3014, 3031, 3035, 3035, 3030, 3049, 3044],
+        "poolType": 3,
+        "poolName": "子夜独角戏"
+      },
+      {
+        "summonType": "10",
+        "luckyBagIds": [],
+        "createTime": "2025-11-23 00:05:36",
+        "poolId": 30121,
+        "gainIds": [3040, 3028, 3128, 3042, 3034, 3027, 3055, 3033, 3034, 3013],
+        "poolType": 3,
+        "poolName": "殓骨悼词"
+      },
+      {
+        "summonType": "10",
+        "luckyBagIds": [],
+        "createTime": "2025-11-23 00:05:22",
+        "poolId": 30121,
+        "gainIds": [3042, 3054, 3040, 3006, 3040, 3026, 3037, 3059, 3005, 3050],
+        "poolType": 3,
+        "poolName": "殓骨悼词"
+      },
+      {
+        "summonType": "10",
+        "luckyBagIds": [],
+        "createTime": "2025-10-31 11:05:52",
+        "poolId": 30111,
+        "gainIds": [3012, 3027, 3057, 3018, 3042, 3126, 3044, 3042, 3013, 3022],
+        "poolType": 3,
+        "poolName": "石心瓦解时"
+      },
+      {
+        "summonType": "10",
+        "luckyBagIds": [],
+        "createTime": "2025-10-09 11:57:35",
+        "poolId": 28112,
+        "gainIds": [3034, 3006, 3016, 3121, 3036, 3035, 3059, 3014, 3035, 3050],
+        "poolType": 3,
+        "poolName": "修缮往日"
+      }
+    ]
+  }
+}

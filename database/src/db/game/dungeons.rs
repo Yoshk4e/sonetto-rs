@@ -186,7 +186,7 @@ pub async fn update_dungeon_progress(
     episode_id: i32,
     stars_earned: i32,
 ) -> Result<()> {
-    let now = common::time::ServerTime::now_ms() as i64;
+    let now = common::time::ServerTime::now_ms();
 
     sqlx::query(
         r#"

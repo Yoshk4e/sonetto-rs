@@ -80,7 +80,7 @@ pub async fn get_player_critters(pool: &SqlitePool, player_id: i64) -> Result<Ve
 }
 
 pub async fn save_critter(pool: &SqlitePool, player_id: i64, critter: &CritterInfo) -> Result<()> {
-    let now = common::time::ServerTime::now_ms() as i64;
+    let now = common::time::ServerTime::now_ms();
 
     // Insert/update main critter
     sqlx::query(

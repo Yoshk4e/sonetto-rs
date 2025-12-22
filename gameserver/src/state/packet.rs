@@ -1,6 +1,5 @@
 use sonettobuf::CmdId;
 
-/// A fully-formed packet waiting to be flushed
 #[derive(Clone)]
 pub enum CommandPacket {
     Reply {

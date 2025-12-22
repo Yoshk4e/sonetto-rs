@@ -7,7 +7,6 @@ use sonettobuf::{
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-/// Send red dot push (all or specific defines)
 pub async fn send_red_dot_push(
     ctx: Arc<Mutex<ConnectionContext>>,
     user_id: i64,
@@ -39,7 +38,6 @@ pub async fn send_red_dot_push(
     Ok(())
 }
 
-/// Send item change push for all item types
 pub async fn send_item_change_push(
     ctx: Arc<Mutex<ConnectionContext>>,
     user_id: i64,
@@ -53,7 +51,6 @@ pub async fn send_item_change_push(
         let ctx_guard = ctx.lock().await;
         let pool = &ctx_guard.state.db;
 
-        // Fetch regular items
         let mut items = Vec::new();
         for item_id in &changed_item_ids {
             if let Some(item) = items::get_item(pool, user_id, *item_id).await? {
@@ -61,10 +58,8 @@ pub async fn send_item_change_push(
             }
         }
 
-        // Fetch power items (all active ones)
         let power_items = items::get_all_power_items(pool, user_id).await?;
 
-        // Fetch insight items (all active ones)
         let insight_items = items::get_all_insight_items(pool, user_id).await?;
 
         (items, power_items, insight_items)
@@ -196,7 +191,7 @@ pub async fn send_dungeon_update_push(
         challenge_count: Some(challenge_count),
         has_record: Some(has_record),
         left_return_all_num: Some(0),
-        today_pass_num: Some(1),  // Episode-specific today count
+        today_pass_num: Some(2),  // Episode-specific today count
         today_total_num: Some(2), // Episode-specific today total
     };
 

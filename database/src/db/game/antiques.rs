@@ -13,7 +13,7 @@ pub async fn get_user_antiques(pool: &SqlitePool, user_id: i64) -> Result<Vec<Us
 }
 
 pub async fn add_antique(pool: &SqlitePool, user_id: i64, antique_id: i32) -> Result<()> {
-    let get_time = common::time::ServerTime::now_ms() as i64;
+    let get_time = common::time::ServerTime::now_ms();
 
     sqlx::query(
         "INSERT INTO user_antiques (user_id, antique_id, get_time) VALUES (?, ?, ?) ON CONFLICT DO NOTHING"

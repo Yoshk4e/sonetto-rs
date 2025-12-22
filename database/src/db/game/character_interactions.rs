@@ -50,7 +50,7 @@ pub async fn add_interaction_selection(
     interaction_id: i32,
     select_id: i32,
 ) -> Result<()> {
-    let now = common::time::ServerTime::now_ms() as i64;
+    let now = common::time::ServerTime::now_ms();
 
     // Ensure interaction exists
     sqlx::query(
@@ -89,7 +89,7 @@ pub async fn finish_interaction(
     user_id: i64,
     interaction_id: i32,
 ) -> Result<()> {
-    let now = common::time::ServerTime::now_ms() as i64;
+    let now = common::time::ServerTime::now_ms();
 
     sqlx::query(
         "UPDATE user_character_interactions SET is_finished = 1, updated_at = ? WHERE user_id = ? AND interaction_id = ?"

@@ -11,14 +11,14 @@ pub async fn on_get_server_time(
     req: ClientPacket,
 ) -> Result<(), AppError> {
     let data = GetServerTimeReply {
-        server_time: Some(ServerTime::now_ms()),
+        server_time: Some(ServerTime::now_ms() as u64),
         offset_time: Some(-18000000),
     };
 
     {
         let mut ctx_guard = ctx.lock().await;
         ctx_guard
-            .send_reply_with_down_tag(CmdId::GetServerTimeCmd, data, 0, req.up_tag, 255)
+            .send_reply_fixed(CmdId::GetServerTimeCmd, data, 0, req.up_tag)
             .await?;
     }
 

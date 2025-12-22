@@ -332,3 +332,64 @@ impl VerifyUserInfo {
         format!("200_{}", uid)
     }
 }
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SummonQueryRsp {
+    pub code: u16,
+    pub msg: String,
+    pub data: SummonQueryRspData,
+}
+
+impl SummonQueryRsp {
+    pub fn summons(data: SummonQueryRspData) -> Self {
+        SummonQueryRsp {
+            code: 200,
+            msg: "成功".to_string(),
+            data: data,
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SummonQueryRspData {
+    pub page_data: Vec<PageDatum>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PageDatum {
+    pub summon_type: String,
+    pub lucky_bag_ids: Vec<Option<serde_json::Value>>,
+    pub create_time: String,
+    pub pool_id: i64,
+    pub gain_ids: Vec<i64>,
+    pub pool_type: i64,
+    pub pool_name: PoolName,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PoolName {
+    #[serde(rename = "子夜独角戏")]
+    Empty,
+    #[serde(rename = "修缮往日")]
+    Fluffy,
+    #[serde(rename = "殓骨悼词")]
+    PoolName,
+    #[serde(rename = "石心瓦解时")]
+    Purple,
+}
+
+impl PoolName {
+    pub fn from_db(name: &str) -> Self {
+        match name {
+            "子夜独角戏" => PoolName::Empty,
+            "修缮往日" => PoolName::Fluffy,
+            "殓骨悼词" => PoolName::PoolName,
+            "石心瓦解时" => PoolName::Purple,
+            _ => PoolName::Empty, // safe fallback
+        }
+    }
+}

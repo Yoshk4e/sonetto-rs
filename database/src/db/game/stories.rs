@@ -46,7 +46,7 @@ pub async fn update_processing_story(
     step_id: i32,
     favor: i32,
 ) -> Result<()> {
-    let now = common::time::ServerTime::now_ms() as i64;
+    let now = common::time::ServerTime::now_ms();
 
     sqlx::query(
         r#"

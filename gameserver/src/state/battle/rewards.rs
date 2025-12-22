@@ -1,5 +1,3 @@
-// src/battle/rewards.rs
-
 use data::exceldb;
 
 #[derive(Debug, Clone)]
@@ -17,7 +15,6 @@ pub fn generate_dungeon_rewards(
 ) -> DungeonRewards {
     let game_data = exceldb::get();
 
-    // Get episode data
     let episode = game_data.episode.iter().find(|e| e.id == episode_id);
 
     let Some(episode) = episode else {
@@ -28,7 +25,6 @@ pub fn generate_dungeon_rewards(
         };
     };
 
-    // Parse normal bonus (always given)
     let normal_bonus = if episode.bonus != 0 {
         parse_bonus_rewards(episode.bonus, multiplication)
     } else {
@@ -37,7 +33,7 @@ pub fn generate_dungeon_rewards(
 
     // Parse first clear bonus (only on first completion)
     let first_bonus = if is_first_clear && episode.first_bonus != 0 {
-        parse_bonus_rewards(episode.first_bonus, 1)
+        parse_bonus_rewards(episode.first_bonus, multiplication)
     } else {
         vec![]
     };

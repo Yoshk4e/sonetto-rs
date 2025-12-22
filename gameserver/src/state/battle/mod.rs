@@ -32,7 +32,6 @@ pub async fn create_battle(
 ) -> Result<StartDungeonReply> {
     let fight = fight_builder::build_fight(pool, &ctx, fight_group).await?;
 
-    // Use the deck that was already generated
     let round = round_builder::build_initial_round(&fight, card_deck).await?;
 
     Ok(StartDungeonReply {

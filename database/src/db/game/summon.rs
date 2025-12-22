@@ -1,5 +1,6 @@
 use crate::models::game::summon::*;
 use anyhow::Result;
+use sonettobuf::SummonResult;
 use sqlx::SqlitePool;
 
 pub async fn get_summon_stats(pool: &SqlitePool, user_id: i64) -> Result<UserSummonStats> {
@@ -79,7 +80,7 @@ async fn get_lucky_bag_info(
     }
 }
 
-async fn get_sp_pool_info(
+pub async fn get_sp_pool_info(
     pool: &SqlitePool,
     user_id: i64,
     pool_id: i32,
@@ -129,4 +130,98 @@ async fn get_sp_pool_info(
     } else {
         Ok(None)
     }
+}
+
+pub async fn add_summon_history(
+    pool: &SqlitePool,
+    user_id: i64,
+    pool_id: i32,
+    pool_name: &str,
+    pool_type: i32,
+    summon_type: i32,
+    results: &[SummonResult],
+) -> sqlx::Result<()> {
+    let now = common::time::ServerTime::now_ms();
+
+    // Insert summon history row
+    let history_id: i64 = sqlx::query_scalar(
+        r#"
+        INSERT INTO user_summon_history (
+            user_id, pool_id, summon_type, pool_type, pool_name, summon_time
+        )
+        VALUES (?, ?, ?, ?, ?, ?)
+        RETURNING id
+        "#,
+    )
+    .bind(user_id)
+    .bind(pool_id)
+    .bind(summon_type)
+    .bind(pool_type)
+    .bind(pool_name)
+    .bind(now)
+    .fetch_one(pool)
+    .await?;
+
+    // Insert gained items (heroes from results)
+    for (idx, result) in results.iter().enumerate() {
+        if let Some(hero_id) = result.hero_id {
+            // Insert hero result
+            sqlx::query(
+                r#"
+                INSERT INTO user_summon_history_items (
+                    history_id, result_index, gain_id
+                )
+                VALUES (?, ?, ?)
+                "#,
+            )
+            .bind(history_id)
+            .bind(idx as i32)
+            .bind(hero_id)
+            .execute(pool)
+            .await?;
+        }
+    }
+
+    tracing::debug!(
+        "Inserted summon history for user {}: pool {}, {} results",
+        user_id,
+        pool_id,
+        results.len()
+    );
+
+    Ok(())
+}
+
+pub async fn update_sp_pool_up_heroes(
+    pool: &SqlitePool,
+    user_id: i64,
+    pool_id: i32,
+    up_hero_ids: &[i32],
+) -> Result<()> {
+    sqlx::query(
+        r#"
+        DELETE FROM user_sp_pool_up_heroes
+        WHERE user_id = ? AND pool_id = ?
+        "#,
+    )
+    .bind(user_id)
+    .bind(pool_id)
+    .execute(pool)
+    .await?;
+
+    for hero_id in up_hero_ids {
+        sqlx::query(
+            r#"
+            INSERT INTO user_sp_pool_up_heroes (user_id, pool_id, hero_id)
+            VALUES (?, ?, ?)
+            "#,
+        )
+        .bind(user_id)
+        .bind(pool_id)
+        .bind(*hero_id)
+        .execute(pool)
+        .await?;
+    }
+
+    Ok(())
 }

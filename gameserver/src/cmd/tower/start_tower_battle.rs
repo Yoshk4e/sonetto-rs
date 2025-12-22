@@ -76,13 +76,11 @@ pub async fn on_start_tower_battle(
         episode_id,
         battle_id,
     };
-    // Generate deck ONCE
+
     let card_push = generate_initial_deck(&pool, player_id, &fight_group, max_ap).await?;
 
-    // Extract the deck
     let card_deck = card_push.card_group.clone();
 
-    // Create battle using the SAME deck
     let battle_data = create_battle(&pool, battle_ctx, &fight_group, card_deck.clone()).await?;
 
     {

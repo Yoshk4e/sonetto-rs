@@ -23,7 +23,7 @@ pub async fn load_critter_info(tx: &mut Transaction<'_, Sqlite>, uid: i64) -> sq
         }
     };
 
-    let now = common::time::ServerTime::now_ms() as i64;
+    let now = common::time::ServerTime::now_ms();
 
     // Starting seed for critter UIDs - ignore the uid field in JSON
     let mut critter_uid = 10000000i64;
@@ -144,7 +144,7 @@ pub async fn load_critter_info(tx: &mut Transaction<'_, Sqlite>, uid: i64) -> sq
 
 /// Load default player info for new user
 pub async fn load_player_info(tx: &mut Transaction<'_, Sqlite>, uid: i64) -> sqlx::Result<()> {
-    let now = common::time::ServerTime::now_ms() as i64;
+    let now = common::time::ServerTime::now_ms();
 
     // Create player_info record
     sqlx::query(
@@ -209,7 +209,7 @@ pub async fn load_hero_list(
     equip_map: &HashMap<i32, i64>,
 ) -> sqlx::Result<()> {
     let game_data = exceldb::get();
-    let now = common::time::ServerTime::now_ms() as i64;
+    let now = common::time::ServerTime::now_ms();
 
     // Starting seed for hero UIDs
     static HERO_UID_COUNTER: AtomicI64 = AtomicI64::new(20000000);
@@ -725,7 +725,7 @@ pub async fn load_equipment(
     uid: i64,
 ) -> sqlx::Result<HashMap<i32, i64>> {
     let game_data = exceldb::get();
-    let now = common::time::ServerTime::now_ms() as i64;
+    let now = common::time::ServerTime::now_ms();
 
     // Starting seed for equipment UIDs
     static EQUIP_UID_COUNTER: AtomicI64 = AtomicI64::new(30000000);
@@ -787,7 +787,7 @@ pub async fn load_starter_items(
     user_id: i64,
 ) -> sqlx::Result<()> {
     let game_data = exceldb::get();
-    let now = common::time::ServerTime::now_ms() as i64;
+    let now = common::time::ServerTime::now_ms();
 
     static POWER_ITEM_UID_COUNTER: AtomicI64 = AtomicI64::new(40000000);
     static INSIGHT_ITEM_UID_COUNTER: AtomicI64 = AtomicI64::new(50000000);
@@ -927,7 +927,7 @@ pub async fn load_starter_currencies(
     user_id: i64,
 ) -> sqlx::Result<()> {
     let game_data = exceldb::get();
-    let now = common::time::ServerTime::now_ms() as i64;
+    let now = common::time::ServerTime::now_ms();
 
     let currencies: Vec<_> = game_data.currency.iter().collect();
 
@@ -1022,7 +1022,7 @@ pub async fn load_starter_hero_groups(
     tx: &mut Transaction<'_, Sqlite>,
     user_id: i64,
 ) -> sqlx::Result<()> {
-    let now = common::time::ServerTime::now_ms() as i64;
+    let now = common::time::ServerTime::now_ms();
 
     // Load hero_group_common_list.json
     let common_json = include_str!("../../../data/static/heros/hero_group_common_list.json");
@@ -1167,7 +1167,7 @@ pub async fn load_hero_group_snapshots(
     tx: &mut Transaction<'_, Sqlite>,
     user_id: i64,
 ) -> sqlx::Result<()> {
-    let now = common::time::ServerTime::now_ms() as i64;
+    let now = common::time::ServerTime::now_ms();
 
     let json_str = include_str!("../../../data/static/heros/hero_group_snapshots.json");
     let data: Value = match serde_json::from_str(json_str) {
@@ -1341,7 +1341,7 @@ pub async fn load_dungeon_info(tx: &mut Transaction<'_, Sqlite>, user_id: i64) -
         }
     };
 
-    let now = common::time::ServerTime::now_ms() as i64;
+    let now = common::time::ServerTime::now_ms();
 
     // Load dungeon info list
     if let Some(dungeon_list) = data.get("dungeonInfoList").and_then(|v| v.as_array()) {
@@ -1549,7 +1549,7 @@ pub async fn load_dungeon_infos(
     tx: &mut Transaction<'_, Sqlite>,
     user_id: i64,
 ) -> sqlx::Result<()> {
-    let now = common::time::ServerTime::now_ms() as i64;
+    let now = common::time::ServerTime::now_ms();
 
     let json_files = [
         include_str!("../../../data/starter/dungeon/dungeon_infos_push_1.json"),
@@ -1635,7 +1635,7 @@ pub async fn load_story_data(tx: &mut Transaction<'_, Sqlite>, user_id: i64) -> 
         }
     };
 
-    let now = common::time::ServerTime::now_ms() as i64;
+    let now = common::time::ServerTime::now_ms();
 
     // Load finished stories
     if let Some(finish_list) = data.get("finishList").and_then(|v| v.as_array()) {
@@ -1686,7 +1686,7 @@ pub async fn load_charge_info(tx: &mut Transaction<'_, Sqlite>, user_id: i64) ->
         }
     };
 
-    let now = common::time::ServerTime::now_ms() as i64;
+    let now = common::time::ServerTime::now_ms();
 
     // Load charge infos
     if let Some(infos) = data.get("infos").and_then(|v| v.as_array()) {
@@ -1801,7 +1801,7 @@ pub async fn load_building_info(
         }
     };
 
-    let now = common::time::ServerTime::now_ms() as i64;
+    let now = common::time::ServerTime::now_ms();
     let mut building_uid = 20000000i64; // Starting UID for buildings
 
     if let Some(building_infos) = data.get("buildingInfos").and_then(|v| v.as_array()) {
@@ -1853,7 +1853,7 @@ pub async fn load_character_interaction_info(
         }
     };
 
-    let now = common::time::ServerTime::now_ms() as i64;
+    let now = common::time::ServerTime::now_ms();
 
     // Load interactions
     if let Some(infos) = data.get("infos").and_then(|v| v.as_array()) {
@@ -1926,7 +1926,7 @@ pub async fn load_summon_info(tx: &mut Transaction<'_, Sqlite>, user_id: i64) ->
         }
     };
 
-    let now = common::time::ServerTime::now_ms() as i64;
+    let now = common::time::ServerTime::now_ms();
 
     // Load main summon stats
     sqlx::query(
@@ -2167,6 +2167,114 @@ pub async fn load_summon_info(tx: &mut Transaction<'_, Sqlite>, user_id: i64) ->
     Ok(())
 }
 
+fn parse_datetime_to_unix_sec(s: &str) -> i64 {
+    use chrono::{NaiveDateTime, TimeZone, Utc};
+
+    match NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S") {
+        Ok(dt) => Utc.from_utc_datetime(&dt).timestamp(),
+        Err(_) => 0,
+    }
+}
+
+pub async fn load_summon_history(
+    tx: &mut Transaction<'_, Sqlite>,
+    user_id: i64,
+) -> sqlx::Result<()> {
+    let json_str = include_str!("../../../data/starter/summon/summon_history.json");
+    let data: Value = match serde_json::from_str(json_str) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("load_summon_history: failed to parse JSON: {e}");
+            return Ok(());
+        }
+    };
+
+    let Some(page_data) = data
+        .get("data")
+        .and_then(|v| v.get("pageData"))
+        .and_then(|v| v.as_array())
+    else {
+        tracing::warn!("load_summon_history: no pageData");
+        return Ok(());
+    };
+
+    for entry in page_data {
+        let pool_id = entry.get("poolId").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+        let pool_type = entry.get("poolType").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+        let pool_name = entry
+            .get("poolName")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+
+        let summon_type = entry
+            .get("summonType")
+            .and_then(|v| v.as_str())
+            .and_then(|s| s.parse::<i32>().ok())
+            .unwrap_or(0);
+
+        let summon_time = entry
+            .get("createTime")
+            .and_then(|v| v.as_str())
+            .map(parse_datetime_to_unix_sec)
+            .unwrap_or(0);
+
+        // Insert summon history row
+        let history_id: i64 = sqlx::query_scalar(
+            r#"
+            INSERT OR IGNORE INTO user_summon_history (
+                user_id, pool_id, summon_type, pool_type, pool_name, summon_time
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            RETURNING id
+            "#,
+        )
+        .bind(user_id)
+        .bind(pool_id)
+        .bind(summon_type)
+        .bind(pool_type)
+        .bind(&pool_name)
+        .bind(summon_time)
+        .fetch_optional(&mut **tx)
+        .await?
+        // If ignored (duplicate), fetch existing id
+        .unwrap_or_else(|| {
+            // fallback query
+            0
+        });
+
+        if history_id == 0 {
+            continue;
+        }
+
+        // Insert gained items
+        if let Some(gain_ids) = entry.get("gainIds").and_then(|v| v.as_array()) {
+            for (idx, gain_id) in gain_ids.iter().enumerate() {
+                let Some(gain_id) = gain_id.as_i64() else {
+                    continue;
+                };
+
+                sqlx::query(
+                    r#"
+                    INSERT OR IGNORE INTO user_summon_history_items (
+                        history_id, result_index, gain_id
+                    )
+                    VALUES (?, ?, ?)
+                    "#,
+                )
+                .bind(history_id)
+                .bind(idx as i32)
+                .bind(gain_id as i32)
+                .execute(&mut **tx)
+                .await?;
+            }
+        }
+    }
+
+    tracing::info!("Loaded summon history for user {}", user_id);
+    Ok(())
+}
+
 /// Load achievement info from achievement_info.json
 pub async fn load_achievement_info(
     tx: &mut Transaction<'_, Sqlite>,
@@ -2181,7 +2289,7 @@ pub async fn load_achievement_info(
         }
     };
 
-    let now = common::time::ServerTime::now_ms() as i64;
+    let now = common::time::ServerTime::now_ms();
 
     if let Some(infos) = data.get("infos").and_then(|v| v.as_array()) {
         for entry in infos {
@@ -2242,7 +2350,7 @@ pub async fn load_starter_antiques(
     user_id: i64,
 ) -> sqlx::Result<()> {
     let game_data = data::exceldb::get();
-    let get_time = common::time::ServerTime::now_ms() as i64;
+    let get_time = common::time::ServerTime::now_ms();
 
     let antiques: Vec<_> = game_data.antique.iter().collect();
 
@@ -3655,7 +3763,7 @@ pub async fn load_friend_info(tx: &mut Transaction<'_, Sqlite>, user_id: i64) ->
         }
     };
 
-    let now = common::time::ServerTime::now_ms() as i64;
+    let now = common::time::ServerTime::now_ms();
 
     // Load friend IDs
     if let Some(friend_ids) = data.get("friendIds").and_then(|v| v.as_array()) {
@@ -3756,7 +3864,7 @@ async fn load_activity101_from_json(
     activity_id: i32,
     json_str: &str,
 ) -> sqlx::Result<()> {
-    let now = common::time::ServerTime::now_ms() as i64;
+    let now = common::time::ServerTime::now_ms();
 
     let data: Value = match serde_json::from_str(json_str) {
         Ok(v) => v,
@@ -3813,7 +3921,7 @@ async fn load_activity101_from_json(
 }
 
 pub async fn load_starter_bgm(tx: &mut Transaction<'_, Sqlite>, user_id: i64) -> sqlx::Result<()> {
-    let now = common::time::ServerTime::now_sec_i32();
+    let now = common::time::ServerTime::now_ms();
     let game_data = data::exceldb::get();
 
     let bgms: Vec<_> = game_data.bgm_switch.iter().collect();
@@ -3873,6 +3981,7 @@ pub async fn load_all_starter_data(pool: &SqlitePool, uid: i64) -> sqlx::Result<
     load_building_info(&mut tx, uid).await?;
     load_character_interaction_info(&mut tx, uid).await?;
     load_summon_info(&mut tx, uid).await?;
+    load_summon_history(&mut tx, uid).await?;
     load_achievement_info(&mut tx, uid).await?;
     load_dialog_info(&mut tx, uid).await?;
     load_starter_antiques(&mut tx, uid).await?;

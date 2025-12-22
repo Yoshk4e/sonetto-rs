@@ -17,22 +17,10 @@ pub async fn on_get_assist_bonus(
         has_receive_assist_bonus: Some(0),
     };
 
-    let current_time = common::time::ServerTime::now_ms();
-
-    let mut should_push = false;
-
-    {
+    let should_push = {
         let mut ctx_guard = ctx.lock().await;
-
-        if let Some(ps) = ctx_guard.player_state.as_mut() {
-            should_push = ps.should_send_state_pushes(current_time);
-
-            if should_push {
-                ps.mark_state_pushes_sent(current_time);
-                ctx_guard.save_current_player_state().await?;
-            }
-        }
-    }
+        ctx_guard.check_and_mark_state_pushes().await?
+    };
 
     if should_push {
         tracing::info!("Sending state pushes from GetAssistBonus");

@@ -21,14 +21,14 @@ pub async fn on_sign_in(
     };
 
     let now = ServerTime::now_ms();
-    let server_day = ServerTime::server_day(now) as i32;
+    let _server_day = ServerTime::server_day(now) as i32;
 
     // Display-only day of month
     let server_date = ServerTime::server_date();
     let day_of_month = server_date.day() as i32;
 
     // Check if already signed in today
-    let already_signed: Option<i32> =
+    /*let already_signed: Option<i32> =
         sqlx::query_scalar("SELECT 1 FROM user_sign_in_days WHERE user_id = ? AND server_day = ?")
             .bind(player_id)
             .bind(server_day)
@@ -46,7 +46,7 @@ pub async fn on_sign_in(
         );
     } else {
         tracing::info!("User {} already signed in today, skipping", player_id);
-    }
+    }*/
 
     let birthday_heroes = sign_in::get_birthday_heroes_today(&pool, player_id).await?;
 

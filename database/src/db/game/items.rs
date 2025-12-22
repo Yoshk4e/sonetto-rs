@@ -55,7 +55,7 @@ pub async fn add_item_quantity(
     .bind(user_id)
     .bind(item_id as i64)
     .bind(amount)
-    .bind(ServerTime::now_ms() as i64)
+    .bind(ServerTime::now_ms())
     .bind(amount as i64)
     .execute(pool)
     .await?;

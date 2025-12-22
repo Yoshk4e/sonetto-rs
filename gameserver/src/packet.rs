@@ -4,7 +4,7 @@ use sonettobuf::prost::Message;
 
 #[derive(Debug)]
 pub struct ServerPacket {
-    pub cmd_id: u16,
+    pub cmd_id: i16,
     pub result_code: u16,
     pub up_tag: u8,
     pub down_tag: u8,
@@ -29,7 +29,7 @@ impl ServerPacket {
         let mut buffer = vec![0u8; total_len];
 
         BE::write_u32(&mut buffer[0..4], (total_len - 4) as u32);
-        BE::write_u16(&mut buffer[4..6], self.cmd_id);
+        BE::write_i16(&mut buffer[4..6], self.cmd_id);
         BE::write_u16(&mut buffer[6..8], self.result_code);
         buffer[8] = self.up_tag;
         buffer[9] = self.down_tag;
@@ -54,7 +54,7 @@ impl ServerPacket {
             )));
         }
 
-        let cmd_id = BE::read_u16(&buffer[4..6]);
+        let cmd_id = BE::read_i16(&buffer[4..6]);
         let result_code = BE::read_u16(&buffer[6..8]);
         let up_tag = buffer[8];
         let down_tag = buffer[9];

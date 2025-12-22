@@ -13,7 +13,7 @@ pub async fn get_user_buildings(pool: &SqlitePool, user_id: i64) -> Result<Vec<B
 }
 
 pub async fn save_building(pool: &SqlitePool, building: &Building) -> Result<()> {
-    let now = common::time::ServerTime::now_ms() as i64;
+    let now = common::time::ServerTime::now_ms();
 
     sqlx::query(
         r#"
@@ -53,7 +53,7 @@ pub async fn update_building_position(
     y: i32,
     rotate: i32,
 ) -> Result<()> {
-    let now = common::time::ServerTime::now_ms() as i64;
+    let now = common::time::ServerTime::now_ms();
 
     sqlx::query("UPDATE user_buildings SET x = ?, y = ?, rotate = ?, updated_at = ? WHERE uid = ?")
         .bind(x)
@@ -68,7 +68,7 @@ pub async fn update_building_position(
 }
 
 pub async fn upgrade_building(pool: &SqlitePool, uid: i64) -> Result<()> {
-    let now = common::time::ServerTime::now_ms() as i64;
+    let now = common::time::ServerTime::now_ms();
 
     sqlx::query("UPDATE user_buildings SET level = level + 1, updated_at = ? WHERE uid = ?")
         .bind(now)

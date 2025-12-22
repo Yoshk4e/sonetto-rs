@@ -70,7 +70,7 @@ pub async fn upsert_red_dot(
     ext: &str,
     replace_all: bool,
 ) -> Result<()> {
-    let now = common::time::ServerTime::now_ms() as i64;
+    let now = common::time::ServerTime::now_ms();
 
     sqlx::query(
         "INSERT INTO red_dots (

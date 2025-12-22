@@ -32,7 +32,7 @@ pub async fn on_client_stat_base_info(
     {
         let mut ctx_guard = ctx.lock().await;
         ctx_guard
-            .send_raw_reply(CmdId::ClientStatBaseInfoCmd, Vec::new(), 0, req.up_tag)
+            .send_empty_reply(CmdId::ClientStatBaseInfoCmd, Vec::new(), 0, req.up_tag)
             .await?;
     }
 

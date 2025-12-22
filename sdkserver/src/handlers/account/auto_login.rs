@@ -24,7 +24,7 @@ pub async fn post(
     // Generate new tokens
     let new_token = generate_token();
     let new_refresh_token = generate_token();
-    let now = ServerTime::now_ms() as i64;
+    let now = ServerTime::now_ms();
     let expires_in = 7 * 24 * 60 * 60 * 1000;
 
     // Update tokens in database

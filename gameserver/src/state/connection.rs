@@ -6,26 +6,20 @@ use tokio::net::TcpStream;
 use tokio::sync::Mutex;
 
 use crate::error::AppError;
-use crate::utils::common::send_raw_server_message;
+use crate::utils::common::{encode_message, send_raw_server_message};
 use sonettobuf::CmdId;
 
-use super::{AppState, CommandPacket, PlayerState, encode_message};
+use super::{AppState, CommandPacket, PlayerState};
 
-/// Represents a single TCP connection
-#[allow(dead_code)]
 pub struct ConnectionContext {
     pub socket: Arc<Mutex<TcpStream>>,
     pub state: Arc<AppState>,
     pub player_id: Option<i64>,
     pub send_queue: VecDeque<CommandPacket>,
 
-    // Persistent player state
     pub player_state: Option<PlayerState>,
-
-    // Connection-only state
     pub logged_in: bool,
 
-    // Internal
     next_sequence: u32,
 
     pub active_battle: Option<ActiveBattle>,
@@ -67,58 +61,53 @@ impl ConnectionContext {
         }
     }
 
-    /// Load player state from database after successful login
     pub async fn load_player_state(&mut self, player_id: i64) -> Result<(), AppError> {
         self.player_id = Some(player_id);
         self.logged_in = true;
 
-        let current_time = ServerTime::now_ms() as i64;
+        let now = ServerTime::now_ms();
 
-        // Try to load existing player state
-        let state =
-            sqlx::query_as::<_, PlayerState>("SELECT * FROM player_state WHERE player_id = ?1")
-                .bind(player_id)
-                .fetch_optional(&self.state.db)
-                .await?;
+        let state = match sqlx::query_as::<_, PlayerState>(
+            "SELECT * FROM player_state WHERE player_id = ?1",
+        )
+        .bind(player_id)
+        .fetch_optional(&self.state.db)
+        .await?
+        {
+            Some(mut state) => {
+                // Always record login
+                state.record_login(now);
 
-        let player_state = match state {
-            Some(state) => {
-                // Update login timestamp
-                let mut state = state;
-                state.update_login(current_time as u64);
-
-                // Check if we need to reset for new day
-                if state.is_new_day_for_reset(current_time as u64) {
+                // Explicit daily reset
+                if state.is_new_server_day(now) {
                     tracing::info!(
-                        "New day detected for player {}, performing daily reset",
+                        "New server day detected for player {}, performing daily reset",
                         player_id
                     );
-                    state.mark_daily_reset(current_time as u64);
+                    state.mark_daily_reset(now);
                 }
 
                 state
             }
             None => {
                 tracing::info!("Creating new player state for player {}", player_id);
-                let mut new_state = PlayerState::new(player_id);
-                new_state.mark_login_complete();
-                new_state
+                let mut state = PlayerState::new(player_id, now);
+                state.mark_login_complete(now);
+                state
             }
         };
 
-        // Save the updated state
-        self.save_player_state_to_db(&player_state).await?;
-
-        self.player_state = Some(player_state);
+        self.save_player_state(&state).await?;
+        self.player_state = Some(state);
 
         tracing::info!("Loaded player state for player {}", player_id);
         Ok(())
     }
 
-    /// Save player state to database
-    pub async fn save_player_state_to_db(&self, state: &PlayerState) -> Result<(), AppError> {
+    pub async fn save_player_state(&self, state: &PlayerState) -> Result<(), AppError> {
         sqlx::query(
-            "INSERT OR REPLACE INTO player_state (
+            r#"
+            INSERT OR REPLACE INTO player_state (
                 player_id, initial_login_complete, last_login_timestamp,
                 created_at, updated_at,
                 last_state_push_sent_timestamp, last_activity_push_sent_timestamp,
@@ -128,10 +117,12 @@ impl ConnectionContext {
                 last_sign_in_day, last_sign_in_time,
                 vip_level,
                 last_energy_refill_time, last_weekly_reset_time, last_monthly_reset_time
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)"
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)
+            "#,
         )
         .bind(state.player_id)
-        .bind(state.initial_login_complete as i64)
+        .bind(state.initial_login_complete)
         .bind(state.last_login_timestamp)
         .bind(state.created_at)
         .bind(state.updated_at)
@@ -140,7 +131,7 @@ impl ConnectionContext {
         .bind(state.last_currency_push_sent_timestamp)
         .bind(state.last_daily_reward_time)
         .bind(state.last_daily_reset_time)
-        .bind(state.month_card_claimed as i64)
+        .bind(state.month_card_claimed)
         .bind(state.last_month_card_claim_timestamp)
         .bind(state.last_sign_in_day)
         .bind(state.last_sign_in_time)
@@ -154,15 +145,13 @@ impl ConnectionContext {
         Ok(())
     }
 
-    /// Save current player state to database
     pub async fn save_current_player_state(&self) -> Result<(), AppError> {
         if let Some(state) = &self.player_state {
-            self.save_player_state_to_db(state).await?;
+            self.save_player_state(state).await?;
         }
         Ok(())
     }
 
-    /// Update and save player state
     pub async fn update_and_save_player_state<F>(&mut self, update_fn: F) -> Result<(), AppError>
     where
         F: FnOnce(&mut PlayerState),
@@ -172,17 +161,16 @@ impl ConnectionContext {
             None => return Ok(()),
         };
 
+        let now = ServerTime::now_ms();
         update_fn(&mut state);
-        state.updated_at = ServerTime::now_ms() as i64;
+        state.updated_at = now;
 
-        self.save_player_state_to_db(&state).await?;
-
+        self.save_player_state(&state).await?;
         self.player_state = Some(state);
 
         Ok(())
     }
 
-    /// Check if should send state pushes and mark as sent if needed
     pub async fn check_and_mark_state_pushes(&mut self) -> Result<bool, AppError> {
         let now = ServerTime::now_ms();
 
@@ -191,20 +179,17 @@ impl ConnectionContext {
             None => return Ok(false),
         };
 
-        let should_send = state.should_send_state_pushes(now);
-
-        if should_send {
-            state.mark_state_pushes_sent(now);
-            state.updated_at = now as i64;
-
-            self.save_player_state_to_db(&state).await?;
-            self.player_state = Some(state);
+        if !state.needs_state_push(now) {
+            return Ok(false);
         }
 
-        Ok(should_send)
+        state.mark_state_push_sent(now);
+        self.save_player_state(&state).await?;
+        self.player_state = Some(state);
+
+        Ok(true)
     }
 
-    /// Check if should send activity pushes and mark as sent if needed
     pub async fn check_and_mark_activity_pushes(&mut self) -> Result<bool, AppError> {
         let now = ServerTime::now_ms();
 
@@ -213,42 +198,17 @@ impl ConnectionContext {
             None => return Ok(false),
         };
 
-        let should_send = state.should_send_activity_pushes(now);
-
-        if should_send {
-            state.mark_activity_pushes_sent(now);
-            state.updated_at = now as i64;
-
-            self.save_player_state_to_db(&state).await?;
-            self.player_state = Some(state);
+        if !state.needs_activity_push(now) {
+            return Ok(false);
         }
 
-        Ok(should_send)
+        state.mark_activity_push_sent(now);
+        self.save_player_state(&state).await?;
+        self.player_state = Some(state);
+
+        Ok(true)
     }
 
-    /// Check if should send currency pushes and mark as sent if needed
-    pub async fn check_and_mark_currency_pushes(&mut self) -> Result<bool, AppError> {
-        let now = ServerTime::now_ms();
-
-        let mut state = match self.player_state.clone() {
-            Some(s) => s,
-            None => return Ok(false),
-        };
-
-        let should_send = state.should_send_currency_pushes(now);
-
-        if should_send {
-            state.mark_currency_pushes_sent(now);
-            state.updated_at = now as i64;
-
-            self.save_player_state_to_db(&state).await?;
-            self.player_state = Some(state);
-        }
-
-        Ok(should_send)
-    }
-
-    /// Check if can claim daily reward and mark as claimed if needed
     pub async fn check_and_mark_daily_reward(&mut self) -> Result<bool, AppError> {
         let now = ServerTime::now_ms();
 
@@ -257,25 +217,21 @@ impl ConnectionContext {
             None => return Ok(false),
         };
 
-        let should_send = state.is_new_day_for_rewards(now);
-
-        if should_send {
-            state.mark_daily_reward_claimed(now);
-            state.updated_at = now as i64;
-
-            self.save_player_state_to_db(&state).await?;
-            self.player_state = Some(state);
+        if !state.is_new_reward_day(now) {
+            return Ok(false);
         }
 
-        Ok(should_send)
+        state.mark_daily_reward_claimed(now);
+        self.save_player_state(&state).await?;
+        self.player_state = Some(state);
+
+        Ok(true)
     }
 
-    /// Get mutable reference to player state
     pub fn player_state_mut(&mut self) -> Option<&mut PlayerState> {
         self.player_state.as_mut()
     }
 
-    /// Get immutable reference to player state
     pub fn player_state(&self) -> Option<&PlayerState> {
         self.player_state.as_ref()
     }
@@ -290,7 +246,6 @@ impl ConnectionContext {
         self.send_queue.push_back(packet);
     }
 
-    /// Send a push notification to the client
     pub async fn send_push<T: Message>(&mut self, cmd_id: CmdId, msg: T) -> Result<(), AppError> {
         let body = encode_message(&msg)?;
         let down_tag = self.state.reserve_down_tag().await;
@@ -305,7 +260,6 @@ impl ConnectionContext {
         Ok(())
     }
 
-    /// Send a reply to a client request
     pub async fn send_reply<T: Message>(
         &mut self,
         cmd_id: CmdId,
@@ -328,16 +282,36 @@ impl ConnectionContext {
         Ok(())
     }
 
-    /// Send a reply with explicit down_tag
-    pub async fn send_reply_with_down_tag<T: Message>(
+    pub async fn send_raw_reply_fixed(
+        &mut self,
+        cmd_id: CmdId,
+        body: Vec<u8>,
+        result_code: i16,
+        up_tag: u8,
+    ) -> Result<(), AppError> {
+        let down_tag = 255;
+        let packet = CommandPacket::Reply {
+            cmd_id,
+            body,
+            result_code,
+            up_tag,
+            down_tag,
+        };
+
+        self.queue_packet(packet);
+        Ok(())
+    }
+
+    // these messages are sent with fixed down_tag
+    pub async fn send_reply_fixed<T: Message>(
         &mut self,
         cmd_id: CmdId,
         msg: T,
         result_code: i16,
         up_tag: u8,
-        down_tag: u8,
     ) -> Result<(), AppError> {
         let body = encode_message(&msg)?;
+        let down_tag = 255;
 
         let packet = CommandPacket::Reply {
             cmd_id,
@@ -351,8 +325,7 @@ impl ConnectionContext {
         Ok(())
     }
 
-    /// Send raw bytes as reply
-    pub async fn send_raw_reply(
+    pub async fn send_empty_reply(
         &mut self,
         cmd_id: CmdId,
         body: Vec<u8>,
@@ -373,28 +346,6 @@ impl ConnectionContext {
         Ok(())
     }
 
-    /// Send raw bytes as reply with explicit down_tag
-    pub async fn send_raw_reply_with_down_tag(
-        &mut self,
-        cmd_id: CmdId,
-        body: Vec<u8>,
-        result_code: i16,
-        up_tag: u8,
-        down_tag: u8,
-    ) -> Result<(), AppError> {
-        let packet = CommandPacket::Reply {
-            cmd_id,
-            body,
-            result_code,
-            up_tag,
-            down_tag,
-        };
-
-        self.queue_packet(packet);
-        Ok(())
-    }
-
-    /// Flush all queued packets to the socket
     pub async fn flush_send_queue(&mut self) -> Result<(), AppError> {
         let mut socket = self.socket.lock().await;
 
@@ -430,8 +381,6 @@ impl ConnectionContext {
         Ok(())
     }
 
-    /// Register this connection in the sessions map
-    /// Should be called after successful login with the Arc wrapping this context
     pub async fn register(ctx: Arc<Mutex<Self>>) {
         let ctx_lock = ctx.lock().await;
         if let Some(player_id) = ctx_lock.player_id {

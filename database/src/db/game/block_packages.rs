@@ -34,7 +34,7 @@ pub async fn add_block_package(pool: &SqlitePool, user_id: i64, package_id: i32)
 }
 
 pub async fn add_special_block(pool: &SqlitePool, user_id: i64, block_id: i32) -> Result<()> {
-    let create_time = common::time::ServerTime::now_ms() as i64;
+    let create_time = common::time::ServerTime::now_ms();
 
     sqlx::query(
         "INSERT INTO user_special_blocks (user_id, block_id, create_time) VALUES (?, ?, ?) ON CONFLICT DO NOTHING"

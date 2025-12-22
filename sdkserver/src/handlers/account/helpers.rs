@@ -1,9 +1,13 @@
 use crate::AppState;
-use crate::models::response::{AccountLoginRsp, AccountLoginRspData, AccountType, RealNameInfo};
+use crate::models::response::{
+    AccountLoginRsp, AccountLoginRspData, AccountType, PageDatum, PoolName, RealNameInfo,
+    SummonQueryRsp, SummonQueryRspData,
+};
 use anyhow::Result;
 use common::time::ServerTime;
 use rand::Rng;
 use sqlx::Row;
+use sqlx::prelude::FromRow;
 
 /// Shared user data struct from database
 #[allow(dead_code)]
@@ -214,4 +218,99 @@ pub fn build_login_response(
             account_tags: user.account_tags.clone(),
         },
     }
+}
+
+/// Fetch summon history with token validation
+pub async fn get_summons(
+    state: &AppState,
+    user_id: i64,
+    token: &str,
+) -> anyhow::Result<SummonQueryRsp> {
+    // --- Validate user + token (same pattern as user loader)
+    let row = sqlx::query(
+        "SELECT token
+         FROM users
+         WHERE id = ?1",
+    )
+    .bind(user_id)
+    .fetch_optional(&state.game.db)
+    .await?
+    .ok_or_else(|| anyhow::anyhow!("User not found"))?;
+
+    let stored_token: String = row.try_get("token")?;
+    if stored_token != token {
+        return Err(anyhow::anyhow!("Invalid token"));
+    }
+
+    #[allow(dead_code)]
+    #[derive(FromRow)]
+    struct SummonHistory {
+        id: i64,
+        summon_type: i32,
+        summon_time: i64,
+        pool_id: i64,
+        pool_type: i32,
+        pool_name: String,
+    }
+
+    // --- Load summon history
+    let history_rows = sqlx::query_as::<_, SummonHistory>(
+        "
+        SELECT
+            id,
+            summon_type,
+            summon_time,
+            pool_id,
+            pool_type,
+            pool_name
+        FROM user_summon_history
+        WHERE user_id = ?
+        ORDER BY summon_time DESC
+        ",
+    )
+    .bind(user_id)
+    .fetch_all(&state.game.db)
+    .await?;
+
+    let mut page_data = Vec::with_capacity(history_rows.len());
+
+    #[derive(FromRow)]
+    struct SummonHistoryItem {
+        gain_id: i64,
+    }
+
+    for history in history_rows {
+        let item_rows = sqlx::query_as::<_, SummonHistoryItem>(
+            "
+            SELECT gain_id
+            FROM user_summon_history_items
+            WHERE history_id = ?
+            ORDER BY result_index ASC
+            ",
+        )
+        .bind(history.id)
+        .fetch_all(&state.game.db)
+        .await?;
+
+        let gain_ids = item_rows
+            .into_iter()
+            .map(|r| r.gain_id as i64)
+            .collect::<Vec<_>>();
+
+        page_data.push(PageDatum {
+            summon_type: history.summon_type.to_string(),
+            lucky_bag_ids: Vec::new(),
+            create_time: format_timestamp(Some(history.summon_time)),
+            pool_id: history.pool_id as i64,
+            gain_ids,
+            pool_type: history.pool_type as i64,
+            pool_name: PoolName::from_db(&history.pool_name),
+        });
+    }
+
+    Ok(SummonQueryRsp {
+        code: 200,
+        msg: "成功".to_string(),
+        data: SummonQueryRspData { page_data },
+    })
 }

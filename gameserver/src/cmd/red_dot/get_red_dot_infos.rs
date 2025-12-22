@@ -1,3 +1,4 @@
+#![allow(unused_imports)]
 use crate::packet::ClientPacket;
 use crate::send_push;
 use crate::state::ConnectionContext;

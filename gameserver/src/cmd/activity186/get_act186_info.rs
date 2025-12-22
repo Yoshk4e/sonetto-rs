@@ -6,6 +6,7 @@ use sonettobuf::{CmdId, GetAct186InfoReply};
 // use sonettobuf::GetAct186InfoRequest;
 use tokio::net::TcpStream;
 
+#[allow(dead_code)]
 pub async fn on_get_act186_info(
     cmd_id: CmdId,
     socket: &mut TcpStream,

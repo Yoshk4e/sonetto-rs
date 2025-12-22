@@ -5,3 +5,4 @@ pub mod noticecp_query;
 pub mod patch_version;
 pub mod receiver_app;
 pub mod resource_check;
+pub mod summon_query;

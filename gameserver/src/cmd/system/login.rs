@@ -32,7 +32,7 @@ pub async fn on_login(
             let mut ctx_guard = ctx.lock().await;
             let payload = build_login_error("Invalid account format");
             ctx_guard
-                .send_raw_reply_with_down_tag(CmdId::LoginRequestCmd, payload, 1, req.up_tag, 255)
+                .send_raw_reply_fixed(CmdId::LoginRequestCmd, payload, 1, req.up_tag)
                 .await?;
             return Err(e);
         }
@@ -56,7 +56,7 @@ pub async fn on_login(
             let mut ctx_guard = ctx.lock().await;
             let payload = build_login_error("User not found");
             ctx_guard
-                .send_raw_reply_with_down_tag(CmdId::LoginRequestCmd, payload, 1, req.up_tag, 255)
+                .send_raw_reply_fixed(CmdId::LoginRequestCmd, payload, 1, req.up_tag)
                 .await?;
             return Err(AppError::Custom("User not found".to_string()));
         }
@@ -65,7 +65,7 @@ pub async fn on_login(
             let mut ctx_guard = ctx.lock().await;
             let payload = build_login_error("Database error");
             ctx_guard
-                .send_raw_reply_with_down_tag(CmdId::LoginRequestCmd, payload, 1, req.up_tag, 255)
+                .send_raw_reply_fixed(CmdId::LoginRequestCmd, payload, 1, req.up_tag)
                 .await?;
             return Err(AppError::Database(e));
         }
@@ -81,7 +81,7 @@ pub async fn on_login(
         let mut ctx_guard = ctx.lock().await;
         let payload = build_login_error("Invalid token");
         ctx_guard
-            .send_raw_reply_with_down_tag(CmdId::LoginRequestCmd, payload, 1, req.up_tag, 255)
+            .send_raw_reply_fixed(CmdId::LoginRequestCmd, payload, 1, req.up_tag)
             .await?;
         return Err(AppError::Custom("Invalid token".to_string()));
     }
@@ -94,7 +94,7 @@ pub async fn on_login(
             let mut ctx_guard = ctx.lock().await;
             let payload = build_login_error("Token expired");
             ctx_guard
-                .send_raw_reply_with_down_tag(CmdId::LoginRequestCmd, payload, 1, req.up_tag, 255)
+                .send_raw_reply_fixed(CmdId::LoginRequestCmd, payload, 1, req.up_tag)
                 .await?;
             return Err(AppError::Custom("Token expired".to_string()));
         }
@@ -119,7 +119,7 @@ pub async fn on_login(
         tracing::debug!("[LoginReply] payload: {:02X?}", payload);
 
         ctx_guard
-            .send_raw_reply_with_down_tag(CmdId::LoginRequestCmd, payload, 0, req.up_tag, 255)
+            .send_raw_reply_fixed(CmdId::LoginRequestCmd, payload, 0, req.up_tag)
             .await?;
     }
 

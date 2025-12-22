@@ -40,7 +40,7 @@ pub async fn dispatch_command(
         CmdId::GetGuideInfoCmd => guide::on_get_guide_info,
         CmdId::DiceHeroGetInfoCmd => dice::on_dice_hero_get_info,
         CmdId::ClientStatBaseInfoCmd => stat::on_client_stat_base_info,
-        CmdId::GetSimplePropertyCmd => player::on_get_simple_property,
+        CmdId::GetSimplePropertyCmd => property::on_get_simple_property,
         CmdId::GetClothInfoCmd => player::on_get_cloth_info,
         CmdId::HeroInfoListCmd => hero::on_hero_info_list,
         CmdId::GetHeroGroupCommonListCmd => hero_group::on_get_hero_group_common_list,
@@ -153,6 +153,10 @@ pub async fn dispatch_command(
         //Todo add option for talent upgrades
         CmdId::TalentStyleReadCmd => talent::on_talent_style_read, // just echos back the hero id
 
+        //summons
+        CmdId::SummonQueryTokenCmd => summon::on_summon_query_token,
+        CmdId::SummonCmd => summon::on_summon,
+        CmdId::ChooseEnhancedPoolHeroCmd => summon::on_choose_enhanced_pool_hero,
 
     });
 

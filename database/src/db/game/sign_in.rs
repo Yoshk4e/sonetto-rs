@@ -16,17 +16,17 @@ pub async fn process_daily_login(pool: &SqlitePool, user_id: i64) -> Result<(boo
             .await?;
 
     let is_new_day = match last_sign_in_time {
-        Some(last) if last > 0 => ServerTime::is_new_day(last as u64, now),
+        Some(last) if last > 0 => ServerTime::is_new_day(last, now),
         _ => true,
     };
 
     let is_new_week = match last_sign_in_time {
-        Some(last) if last > 0 => !ServerTime::is_same_week(last as u64, now),
+        Some(last) if last > 0 => !ServerTime::is_same_week(last, now),
         _ => false,
     };
 
     let is_new_month = match last_sign_in_time {
-        Some(last) if last > 0 => !ServerTime::is_same_month(last as u64, now),
+        Some(last) if last > 0 => !ServerTime::is_same_month(last, now),
         _ => false,
     };
 
@@ -78,7 +78,7 @@ pub async fn process_daily_login(pool: &SqlitePool, user_id: i64) -> Result<(boo
             "#,
         )
         .bind(user_id)
-        .bind(ServerTime::now_ms() as i64)
+        .bind(ServerTime::now_ms())
         .execute(pool)
         .await?;
 
@@ -90,8 +90,8 @@ pub async fn process_daily_login(pool: &SqlitePool, user_id: i64) -> Result<(boo
                AND end_time > ?",
         )
         .bind(user_id)
-        .bind(ServerTime::now_ms() as i64)
-        .bind(ServerTime::now_ms() as i64)
+        .bind(ServerTime::now_ms())
+        .bind(ServerTime::now_ms())
         .fetch_optional(pool)
         .await?;
 
@@ -180,7 +180,7 @@ pub async fn process_manual_sign_in(pool: &SqlitePool, user_id: i64) -> Result<(
         "#,
     )
     .bind(user_id)
-    .bind(common::time::ServerTime::now_sec_i32())
+    .bind(common::time::ServerTime::now_ms())
     .execute(pool)
     .await?;
 

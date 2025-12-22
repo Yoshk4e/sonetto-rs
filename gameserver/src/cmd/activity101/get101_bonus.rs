@@ -29,21 +29,23 @@ pub async fn on_get101_bonus(
         let ctx_guard = ctx.lock().await;
 
         if let Some(state) = &ctx_guard.player_state {
-            let current_time_simple = common::time_ms_u64();
-            let current_time_server = common::time::ServerTime::now_ms();
+            // ALWAYS use server time for reset logic
+            let now = common::time::ServerTime::now_ms();
 
             debug_info = format!(
                 "DEBUG Get101Bonus:\n\
-                        - last_daily_reward_time: {:?}\n\
-                        - time_ms_u64(): {}\n\
-                        - ServerTime::now_ms(): {}\n\
-                        - is_new_day_for_rewards(simple): {}\n\
-                        - is_new_day_for_rewards(server): {}",
+                 - last_daily_reward_time: {:?}\n\
+                 - ServerTime::now_ms(): {}\n\
+                 - server_day(now): {}\n\
+                 - server_day(last): {:?}\n\
+                 - is_new_day_for_rewards(server): {}",
                 state.last_daily_reward_time,
-                current_time_simple,
-                current_time_server,
-                state.is_new_day_for_rewards(current_time_simple),
-                state.is_new_day_for_rewards(current_time_server)
+                now,
+                common::time::ServerTime::server_day(now),
+                state
+                    .last_daily_reward_time
+                    .map(common::time::ServerTime::server_day),
+                state.is_new_reward_day(now),
             );
         }
     }

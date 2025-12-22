@@ -11,7 +11,7 @@ pub async fn on_mark_main_thumbnail(
 ) -> Result<(), AppError> {
     let mut ctx_guard = ctx.lock().await;
     ctx_guard
-        .send_raw_reply(CmdId::MarkMainThumbnailCmd, Vec::new(), 0, req.up_tag)
+        .send_empty_reply(CmdId::MarkMainThumbnailCmd, Vec::new(), 0, req.up_tag)
         .await?;
 
     Ok(())
