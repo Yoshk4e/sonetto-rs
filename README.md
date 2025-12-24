@@ -9,14 +9,19 @@ sonetto-rs is a ps for reverse 1999 made in rust. why? no one tried and succeede
 ## How to use sonetto-rs?
 - Clone the repo
 - Install [rust](https://rust-lang.org/tools/install/)
-- open terminal or command prompt in project root directory
+- Clone [Sonetto-Data](https://gitlab.com/yoncodes/sonetto-data) 
+- Open the project folder for sonetto-rs
+- Add excel2json to the data folder
+- open terminal or command prompt in sonetto-rs root directory
 ```bash
 cargo build --release
 ```
 
 - sdkserver and gameserver will be in the target/release directory
+- you can move these two files to another location if you want
+- in the same folder as sdkserver and gameserver make a data folder and copy excel2json and static to it
 
-- need to use the [sonetto patch](https://github.com/yoncodes/sonetto-patch)
+- need to use the [sonetto patch](https://github.com/yoncodes/sonetto-patch) to make the game work with the server
 - now open two terminals or command prompts
 
 ```bash
