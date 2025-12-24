@@ -3,7 +3,16 @@ name = "data"
 edition.workspace = true
 version.workspace = true
 
-[dependencies]
+
+[build-dependencies]
 serde.workspace = true
 serde_json.workspace = true
 anyhow.workspace = true
+walkdir.workspace = true
+heck.workspace = true
+
+[dependencies]
+once_cell.workspace = true
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true

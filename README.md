@@ -7,14 +7,16 @@ sonetto-rs is a ps for reverse 1999 made in rust. why? no one tried and succeede
 ![main image](/images/r99-murc.png)
 
 ## How to use sonetto-rs?
-- need to install rust
+- Clone the repo
+- Install [rust](https://rust-lang.org/tools/install/)
 - open terminal or command prompt in project root directory
 ```bash
 cargo build --release
 ```
-sdkserver and gameserver will be in the target/release directory
 
-- need to use the sonetto patch (soon)
+- sdkserver and gameserver will be in the target/release directory
+
+- need to use the [sonetto patch](https://github.com/yoncodes/sonetto-patch)
 - now open two terminals or command prompts
 
 ```bash
@@ -23,7 +25,11 @@ sdkserver and gameserver will be in the target/release directory
 ```bash
     .\gameserver
 ```
-- Login with email. if account doesn't exist it will be created automatically
+- Login with email. **NOT REGISTER** if the account doesn't exist it will be created automatically
+![login image](/images/r99-email.png)
+
+## Expectations
+- This is the first release of sonetto-rs, expect bugs and issues. Please report any issues you find.
 
 ![heroes image](/images/r99-heroes.png)
 
@@ -61,7 +67,7 @@ Everythings unlocked out the box
 - Drop rates need to be tested
 
 ## Known Bugs
-- 7 day sign is bugged (sometimes rewards are given twice 12 am and 12:30 am) (I blame the game for using 3 different time formats)(u64, i64 and i32 lmao)
+- ~~7 day sign is bugged (sometimes rewards are given twice 12 am and 12:30 am) (I blame the game for using 3 different time formats)(u64, i64 and i32 lmao)~~ (fixed)
 - Ezio has max number of moxie its a visual bug (no idea why yet) (normal max is 5 he's showing almost a 100)
 
 ## Plans for the future

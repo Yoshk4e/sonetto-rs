@@ -394,7 +394,7 @@ fn build_player_skills(cloth_id: Option<i32>) -> Vec<sonettobuf::PlayerSkillInfo
             skills.push(sonettobuf::PlayerSkillInfo {
                 skill_id: Some(cloth.skill3),
                 cd: Some(cloth.cd3),
-                need_power: Some(cloth.use_power3.get(0).copied().unwrap_or(0)),
+                need_power: None,
                 r#type: Some(0),
             });
         }

@@ -2,8 +2,6 @@
 // Do not edit manually
 
 use serde::{Deserialize, Serialize};
-use anyhow::Result;
-use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SummonPool {
@@ -36,7 +34,7 @@ pub struct SummonPool {
     #[serde(rename = "doubleSsrUpRates")]
     pub double_ssr_up_rates: String,
     #[serde(rename = "guaranteeSRParam")]
-    pub guarantee_s_r_param: String,
+    pub guarantee_srparam: String,
     #[serde(rename = "historyShowType")]
     pub history_show_type: i32,
     #[serde(rename = "id")]
@@ -82,6 +80,7 @@ pub struct SummonPool {
     #[serde(rename = "upWeight")]
     pub up_weight: String,
 }
+use std::collections::HashMap;
 
 pub struct SummonPoolTable {
     records: Vec<SummonPool>,
@@ -90,31 +89,28 @@ pub struct SummonPoolTable {
 }
 
 impl SummonPoolTable {
-    pub fn load(path: &str) -> Result<Self> {
+    pub fn load(path: &str) -> anyhow::Result<Self> {
         let json = std::fs::read_to_string(path)?;
-        
-        // Parse the [table_name, [records]] format
         let value: serde_json::Value = serde_json::from_str(&json)?;
+
         let records: Vec<SummonPool> = if let Some(array) = value.as_array() {
             if array.len() >= 2 && array[1].is_array() {
-                // Format: ["table_name", [records]]
                 serde_json::from_value(array[1].clone())?
             } else {
-                // Format: [records]
                 serde_json::from_value(value)?
             }
         } else {
             serde_json::from_value(value)?
         };
-        
+
         let mut by_id = HashMap::with_capacity(records.len());
         let mut by_group: HashMap<i32, Vec<usize>> = HashMap::new();
-        
+
         for (idx, record) in records.iter().enumerate() {
             by_id.insert(record.id, idx);
-                by_group.entry(record.jump_group_id).or_insert_with(Vec::new).push(idx);
+            by_group.entry(record.jump_group_id).or_default().push(idx);
         }
-        
+
         Ok(Self {
             records,
             by_id,
@@ -124,15 +120,15 @@ impl SummonPoolTable {
 
     #[inline]
     pub fn get(&self, id: i32) -> Option<&SummonPool> {
-        self.by_id.get(&id).map(|&idx| &self.records[idx])
+        self.by_id.get(&id).map(|&i| &self.records[i])
     }
 
     pub fn by_group(&self, group_id: i32) -> impl Iterator<Item = &'_ SummonPool> + '_ {
         self.by_group
             .get(&group_id)
             .into_iter()
-            .flat_map(|indices| indices.iter())
-            .map(|&idx| &self.records[idx])
+            .flat_map(|idxs| idxs.iter())
+            .map(|&i| &self.records[i])
     }
 
     #[inline]
@@ -145,11 +141,6 @@ impl SummonPoolTable {
         self.records.iter()
     }
 
-    pub fn len(&self) -> usize {
-        self.records.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.records.is_empty()
-    }
+    pub fn len(&self) -> usize { self.records.len() }
+    pub fn is_empty(&self) -> bool { self.records.is_empty() }
 }

@@ -35,7 +35,6 @@ pub mod summon_pool;
 pub mod talent_scheme;
 
 use std::sync::OnceLock;
-use anyhow::Result;
 
 pub struct GameDB {
     pub antique: antique::AntiqueTable,
@@ -74,105 +73,105 @@ pub struct GameDB {
 }
 
 impl GameDB {
-    pub fn load(data_dir: &str) -> Result<Self> {
+    pub fn load(data_dir: &str) -> anyhow::Result<Self> {
         let antique = antique::AntiqueTable::load(
-            &format!("{data_dir}/antique.json")
+            &format!("{}/antique.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load antique.json: {}", e))?;
         let battle = battle::BattleTable::load(
-            &format!("{data_dir}/battle.json")
+            &format!("{}/battle.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load battle.json: {}", e))?;
         let bgm_switch = bgm_switch::BgmSwitchTable::load(
-            &format!("{data_dir}/bgm_switch.json")
+            &format!("{}/bgm_switch.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load bgm_switch.json: {}", e))?;
         let bonus = bonus::BonusTable::load(
-            &format!("{data_dir}/bonus.json")
+            &format!("{}/bonus.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load bonus.json: {}", e))?;
         let chapter = chapter::ChapterTable::load(
-            &format!("{data_dir}/chapter.json")
+            &format!("{}/chapter.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load chapter.json: {}", e))?;
         let character = character::CharacterTable::load(
-            &format!("{data_dir}/character.json")
+            &format!("{}/character.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load character.json: {}", e))?;
         let character_destiny = character_destiny::CharacterDestinyTable::load(
-            &format!("{data_dir}/character_destiny.json")
+            &format!("{}/character_destiny.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load character_destiny.json: {}", e))?;
         let character_level = character_level::CharacterLevelTable::load(
-            &format!("{data_dir}/character_level.json")
+            &format!("{}/character_level.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load character_level.json: {}", e))?;
         let character_rank = character_rank::CharacterRankTable::load(
-            &format!("{data_dir}/character_rank.json")
+            &format!("{}/character_rank.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load character_rank.json: {}", e))?;
         let character_talent = character_talent::CharacterTalentTable::load(
-            &format!("{data_dir}/character_talent.json")
+            &format!("{}/character_talent.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load character_talent.json: {}", e))?;
         let character_voice = character_voice::CharacterVoiceTable::load(
-            &format!("{data_dir}/character_voice.json")
+            &format!("{}/character_voice.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load character_voice.json: {}", e))?;
         let cloth_level = cloth_level::ClothLevelTable::load(
-            &format!("{data_dir}/cloth_level.json")
+            &format!("{}/cloth_level.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load cloth_level.json: {}", e))?;
         let currency = currency::CurrencyTable::load(
-            &format!("{data_dir}/currency.json")
+            &format!("{}/currency.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load currency.json: {}", e))?;
         let episode = episode::EpisodeTable::load(
-            &format!("{data_dir}/episode.json")
+            &format!("{}/episode.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load episode.json: {}", e))?;
         let equip = equip::EquipTable::load(
-            &format!("{data_dir}/equip.json")
+            &format!("{}/equip.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load equip.json: {}", e))?;
         let equip_skill = equip_skill::EquipSkillTable::load(
-            &format!("{data_dir}/equip_skill.json")
+            &format!("{}/equip_skill.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load equip_skill.json: {}", e))?;
         let equip_strengthen = equip_strengthen::EquipStrengthenTable::load(
-            &format!("{data_dir}/equip_strengthen.json")
+            &format!("{}/equip_strengthen.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load equip_strengthen.json: {}", e))?;
         let guide = guide::GuideTable::load(
-            &format!("{data_dir}/guide.json")
+            &format!("{}/guide.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load guide.json: {}", e))?;
         let hero_trial = hero_trial::HeroTrialTable::load(
-            &format!("{data_dir}/hero_trial.json")
+            &format!("{}/hero_trial.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load hero_trial.json: {}", e))?;
         let insight_item = insight_item::InsightItemTable::load(
-            &format!("{data_dir}/insight_item.json")
+            &format!("{}/insight_item.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load insight_item.json: {}", e))?;
         let item = item::ItemTable::load(
-            &format!("{data_dir}/item.json")
+            &format!("{}/item.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load item.json: {}", e))?;
         let monster = monster::MonsterTable::load(
-            &format!("{data_dir}/monster.json")
+            &format!("{}/monster.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load monster.json: {}", e))?;
         let monster_skill_template = monster_skill_template::MonsterSkillTemplateTable::load(
-            &format!("{data_dir}/monster_skill_template.json")
+            &format!("{}/monster_skill_template.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load monster_skill_template.json: {}", e))?;
         let monster_template = monster_template::MonsterTemplateTable::load(
-            &format!("{data_dir}/monster_template.json")
+            &format!("{}/monster_template.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load monster_template.json: {}", e))?;
         let open = open::OpenTable::load(
-            &format!("{data_dir}/open.json")
+            &format!("{}/open.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load open.json: {}", e))?;
         let power_item = power_item::PowerItemTable::load(
-            &format!("{data_dir}/power_item.json")
+            &format!("{}/power_item.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load power_item.json: {}", e))?;
         let skill = skill::SkillTable::load(
-            &format!("{data_dir}/skill.json")
+            &format!("{}/skill.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load skill.json: {}", e))?;
         let skill_ex_level = skill_ex_level::SkillExLevelTable::load(
-            &format!("{data_dir}/skill_ex_level.json")
+            &format!("{}/skill_ex_level.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load skill_ex_level.json: {}", e))?;
         let skill_passive_level = skill_passive_level::SkillPassiveLevelTable::load(
-            &format!("{data_dir}/skill_passive_level.json")
+            &format!("{}/skill_passive_level.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load skill_passive_level.json: {}", e))?;
         let skin = skin::SkinTable::load(
-            &format!("{data_dir}/skin.json")
+            &format!("{}/skin.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load skin.json: {}", e))?;
         let summon = summon::SummonTable::load(
-            &format!("{data_dir}/summon.json")
+            &format!("{}/summon.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load summon.json: {}", e))?;
         let summon_pool = summon_pool::SummonPoolTable::load(
-            &format!("{data_dir}/summon_pool.json")
+            &format!("{}/summon_pool.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load summon_pool.json: {}", e))?;
         let talent_scheme = talent_scheme::TalentSchemeTable::load(
-            &format!("{data_dir}/talent_scheme.json")
+            &format!("{}/talent_scheme.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load talent_scheme.json: {}", e))?;
 
         Ok(Self {
@@ -222,7 +221,7 @@ impl GameDB {
 
 static GAME_DATA: OnceLock<GameDB> = OnceLock::new();
 
-pub fn init(data_dir: &str) -> Result<()> {
+pub fn init(data_dir: &str) -> anyhow::Result<()> {
     let db = GameDB::load(data_dir)?;
     GAME_DATA.set(db)
         .map_err(|_| anyhow::anyhow!("Game data already initialized"))
