@@ -4,16 +4,13 @@ use crate::state::{
     BannerType, ConnectionContext, GachaResult, GachaState, build_gacha, grant_dupe_rewards,
     load_gacha_state, save_gacha_state,
 };
-use crate::utils::{
-    inventory::{add_currencies, add_items},
-    push,
-};
+use crate::utils::push;
 use data::exceldb;
-use database::db::game::{
-    heroes::{add_hero_duplicate, create_hero, has_hero},
-    summon::{add_summon_history, get_sp_pool_info},
-};
+use database::db::game::summon::{add_summon_history, get_sp_pool_info};
 
+use database::models::game::currencies::UserCurrencyModel;
+use database::models::game::heros::UserHeroModel;
+use database::models::game::items::UserItemModel;
 use prost::Message;
 use rand::thread_rng;
 
@@ -39,6 +36,10 @@ pub async fn on_summon(
             ctx.state.db.clone(),
         )
     };
+
+    let hero = UserHeroModel::new(user_id, db.clone());
+    let item = UserItemModel::new(user_id, db.clone());
+    let currency = UserCurrencyModel::new(user_id, db.clone());
 
     let game_data = exceldb::get();
     let summon_pool = game_data
@@ -81,7 +82,8 @@ pub async fn on_summon(
 
         let mut can_afford = true;
         for (item_id, amount) in &items {
-            let current = database::db::game::items::get_item(&db, user_id, *item_id)
+            let current = item
+                .get_item(*item_id)
                 .await?
                 .map(|i| i.quantity)
                 .unwrap_or(0);
@@ -110,7 +112,8 @@ pub async fn on_summon(
     let mut tickets_converted = 0;
 
     for (item_id, amount) in &selected_items {
-        let current = database::db::game::items::get_item(&db, user_id, *item_id)
+        let current = item
+            .get_item(*item_id)
             .await?
             .map(|i| i.quantity)
             .unwrap_or(0);
@@ -122,7 +125,8 @@ pub async fn on_summon(
             let shortage = *amount - current;
             let currency_needed = shortage * 180;
 
-            let currency_balance = database::db::game::currencies::get_currency(&db, user_id, 2)
+            let currency_balance = currency
+                .get_currency(2)
                 .await?
                 .map(|c| c.quantity)
                 .unwrap_or(0);
@@ -150,22 +154,23 @@ pub async fn on_summon(
 
     {
         for (item_id, amount) in &actual_cost_items {
-            database::db::game::items::remove_item_quantity(&db, user_id, *item_id, *amount)
-                .await?;
+            item.remove_item_quantity(*item_id, *amount).await?;
         }
 
         for (currency_id, amount) in &actual_cost_currencies {
-            database::db::game::currencies::remove_currency(&db, user_id, *currency_id, *amount)
-                .await?;
+            currency.remove_currency(*currency_id, *amount).await?;
         }
     }
 
-    let sp_pool_info = get_sp_pool_info(&db, user_id, pool_id).await?;
+    let pool_cfg = exceldb::get()
+        .summon_pool
+        .iter()
+        .find(|p| p.id == pool_id)
+        .expect("Summon pool not found");
 
-    let banner_type = match &sp_pool_info {
-        Some(sp) => BannerType::from(sp.sp_type),
-        None => BannerType::RateUp,
-    };
+    let banner_type = BannerType::from(pool_cfg.r#type);
+
+    let sp_pool_info = get_sp_pool_info(&db, user_id, pool_id).await?;
 
     let pool = build_gacha(pool_id, sp_pool_info.as_ref()).await?;
 
@@ -185,7 +190,7 @@ pub async fn on_summon(
     };
 
     let mut reply_results = Vec::with_capacity(gacha_results.len());
-    let mut all_changed_item_ids = Vec::new();
+    let mut all_changed_item_ids: Vec<u32> = Vec::new();
     let mut all_changed_currencies = Vec::new();
     let mut new_heroes = Vec::new();
 
@@ -196,11 +201,11 @@ pub async fn on_summon(
                 rare,
                 is_up,
             } => {
-                let (is_new, duplicate_count) = if has_hero(&db, user_id, hero_id).await? {
-                    let dup = add_hero_duplicate(&db, user_id, hero_id).await?;
+                let (is_new, duplicate_count) = if hero.has_hero(hero_id).await? {
+                    let dup = hero.add_hero_duplicate(hero_id).await?;
                     (false, dup)
                 } else {
-                    create_hero(&db, user_id, hero_id).await?;
+                    hero.create_hero(hero_id).await?;
                     new_heroes.push(hero_id);
                     (true, 0)
                 };
@@ -210,13 +215,13 @@ pub async fn on_summon(
                         grant_dupe_rewards(hero_id, duplicate_count).await?;
 
                     if !item_rewards.is_empty() {
-                        let item_ids = add_items(&db, user_id, &item_rewards).await?;
-                        all_changed_item_ids.extend(item_ids);
+                        let item_ids = item.create_items(&item_rewards).await?;
+                        all_changed_item_ids.extend(item_ids.iter().map(|id| *id as u32));
                     }
 
                     if !currency_rewards.is_empty() {
                         let currency_changes =
-                            add_currencies(&db, user_id, &currency_rewards).await?;
+                            currency.create_currencies(&currency_rewards).await?;
                         all_changed_currencies.extend(currency_changes);
                     }
                 }
@@ -270,9 +275,7 @@ pub async fn on_summon(
     if !new_heroes.is_empty() {
         let mut hero_infos = Vec::new();
         for hero_id in new_heroes {
-            if let Ok(hero) =
-                database::db::game::heroes::get_hero_by_hero_id(&db, user_id, hero_id).await
-            {
+            if let Ok(hero) = hero.get_hero(hero_id).await {
                 hero_infos.push(hero.into());
             }
         }

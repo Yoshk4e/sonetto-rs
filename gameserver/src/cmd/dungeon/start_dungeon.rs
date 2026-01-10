@@ -57,12 +57,10 @@ pub async fn on_start_dungeon(
         battle_id,
     };
 
-    // Generate deck ONCE
     let card_push = generate_initial_deck(&pool, player_id, &fight_group, max_ap).await?;
 
     let card_deck = card_push.card_group.clone();
 
-    // Create battle using the SAME deck
     let battle_data = create_battle(&pool, battle_ctx, &fight_group, card_deck.clone()).await?;
 
     {
@@ -85,7 +83,6 @@ pub async fn on_start_dungeon(
             replay_episode_id: Some(episode_id),
             fight_id: Some(chrono::Utc::now().timestamp_millis()),
             multiplication: Some(multiplication),
-        
         });
     }
 
@@ -153,7 +150,7 @@ async fn handle_story_only_episode(
             ctx_guard.state.db.clone(),
         )
     };
-    // Ensure dungeon row exists / update progress
+
     let updated_dungeon = get_user_dungeon(&pool, player_id, chapter_id, episode_id).await?;
 
     let dungeon_push = DungeonUpdatePush {

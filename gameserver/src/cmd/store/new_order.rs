@@ -1,8 +1,12 @@
 use crate::error::AppError;
 use crate::packet::ClientPacket;
 use crate::state::ConnectionContext;
-use crate::utils::inventory::{add_currencies, add_items};
+
 use crate::utils::push;
+use database::models::game::{
+    currencies::UserCurrencyModel, heros::UserHeroModel, items::UserItemModel,
+};
+
 use prost::Message;
 use sonettobuf::{CmdId, NewOrderReply, NewOrderRequest, OrderCompletePush, StatInfoPush};
 use std::sync::Arc;
@@ -20,6 +24,17 @@ pub async fn on_new_order(
 
     let now = common::time::ServerTime::now_ms();
     let game_order_id = now;
+
+    let (player_id, pool) = {
+        let ctx_guard = ctx.lock().await;
+        let player_id = ctx_guard.player_id.ok_or(AppError::NotLoggedIn)?;
+        let pool = ctx_guard.state.db.clone();
+        (player_id, pool)
+    };
+
+    let hero = UserHeroModel::new(player_id, pool.clone());
+    let item = UserItemModel::new(player_id, pool.clone());
+    let currency = UserCurrencyModel::new(player_id, pool.clone());
 
     let (
         user_id,
@@ -161,21 +176,19 @@ pub async fn on_new_order(
             crate::state::parse_store_product(&all_items);
 
         let mut item_ids = if !items.is_empty() {
-            add_items(pool, player_id, &items).await?
+            item.create_items(&items).await?
         } else {
             vec![]
         };
 
         let currency_ids = if !currencies.is_empty() {
-            add_currencies(pool, player_id, &currencies).await?
+            currency.create_currencies(&currencies).await?
         } else {
             vec![]
         };
 
         if !power_items.is_empty() {
-            database::db::game::items::add_power_items(
-                pool,
-                player_id,
+            item.create_power_items(
                 &power_items
                     .iter()
                     .map(|(id, count)| (*id as i32, *count))
@@ -185,7 +198,14 @@ pub async fn on_new_order(
         }
 
         if !insight_selectors.is_empty() {
-            let insight_item_ids = add_items(pool, player_id, &insight_selectors).await?;
+            let insight_item_ids = item
+                .create_insight_items(
+                    &insight_selectors
+                        .iter()
+                        .map(|(id, count)| (*id as i32, *count))
+                        .collect::<Vec<_>>(),
+                )
+                .await?;
             item_ids.extend(insight_item_ids);
         }
 
@@ -203,8 +223,8 @@ pub async fn on_new_order(
 
         for (hero_id, _count) in &heroes {
             let hero_id = *hero_id as i32;
-            if !database::db::game::heroes::has_hero(pool, player_id, hero_id).await? {
-                database::db::game::heroes::create_hero(pool, player_id, hero_id).await?;
+            if !hero.has_hero(hero_id).await? {
+                hero.create_hero(hero_id).await?;
                 tracing::info!(
                     "User {} received new hero {} from charge pack",
                     player_id,
@@ -310,7 +330,14 @@ pub async fn on_new_order(
     }
 
     if !changed_items.is_empty() {
-        push::send_item_change_push(ctx.clone(), user_id, changed_items, vec![], vec![]).await?;
+        push::send_item_change_push(
+            ctx.clone(),
+            user_id,
+            changed_items.into_iter().map(|id| id as u32).collect(),
+            vec![],
+            vec![],
+        )
+        .await?;
     }
 
     if !changed_currencies.is_empty() {

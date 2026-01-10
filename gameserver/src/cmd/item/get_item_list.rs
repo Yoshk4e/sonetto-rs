@@ -1,7 +1,7 @@
 use crate::error::AppError;
 use crate::packet::ClientPacket;
 use crate::state::ConnectionContext;
-use database::db::game::items;
+use database::models::game::items::{InsightItem, Item, PowerItem, UserItemModel};
 use sonettobuf::{CmdId, GetItemListReply};
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -13,10 +13,13 @@ pub async fn on_get_item_list(
     let (items_data, power_items_data, insight_items_data) = {
         let ctx_guard = ctx.lock().await;
         let user_id = ctx_guard.player_id.ok_or(AppError::NotLoggedIn)?;
+        let pool = ctx_guard.state.db.clone();
 
-        let items = items::get_all_items(&ctx_guard.state.db, user_id).await?;
-        let power_items = items::get_all_power_items(&ctx_guard.state.db, user_id).await?;
-        let insight_items = items::get_all_insight_items(&ctx_guard.state.db, user_id).await?;
+        let item = UserItemModel::new(user_id, pool);
+
+        let items: Vec<Item> = item.get_all_items().await?;
+        let power_items: Vec<PowerItem> = item.get_all_power_items().await?;
+        let insight_items: Vec<InsightItem> = item.get_all_insight_items().await?;
 
         (items, power_items, insight_items)
     };

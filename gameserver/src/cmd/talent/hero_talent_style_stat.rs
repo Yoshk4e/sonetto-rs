@@ -1,7 +1,7 @@
 use crate::error::AppError;
 use crate::packet::ClientPacket;
 use crate::state::ConnectionContext;
-use database::db::game::heroes;
+use database::models::game::heros::{HeroModel, UserHeroModel};
 use prost::Message;
 use sonettobuf::{CmdId, HeroUpdatePush, TalentStyleReadReply, TalentStyleReadRequest};
 use std::sync::Arc;
@@ -16,42 +16,37 @@ pub async fn on_hero_talent_style_stat(
 
     let hero_id = request.hero_id.ok_or(AppError::InvalidRequest)?;
 
-    let user_id = {
+    let (player_id, pool) = {
         let ctx_guard = ctx.lock().await;
         let player_id = ctx_guard.player_id.ok_or(AppError::NotLoggedIn)?;
-        let pool = &ctx_guard.state.db;
-
-        let hero = heroes::get_hero_by_hero_id(pool, player_id, hero_id).await?;
-
-        sqlx::query("UPDATE heroes SET talent_style_red = 0 WHERE uid = ? AND user_id = ?")
-            .bind(hero.record.uid)
-            .bind(player_id)
-            .execute(pool)
-            .await?;
-
-        tracing::info!(
-            "User {} marked talent style as read for hero {}",
-            player_id,
-            hero_id
-        );
-
-        player_id
+        let pool = ctx_guard.state.db.clone();
+        (player_id, pool)
     };
 
     let data = TalentStyleReadReply {
         hero_id: Some(hero_id),
     };
 
+    let hero = UserHeroModel::new(player_id, pool.clone());
+    let hero_data = hero.get(hero_id).await?;
+
+    hero.talent_style_read(hero_id).await?;
+
+    tracing::info!(
+        "User {} marked talent style as read for hero {}",
+        player_id,
+        hero_id
+    );
+
     {
         let mut ctx_guard = ctx.lock().await;
 
-        let updated_hero =
-            heroes::get_hero_by_hero_id(&ctx_guard.state.db, user_id, hero_id).await?;
+        let hero_info: sonettobuf::HeroInfo = hero_data.into();
         ctx_guard
             .send_push(
                 CmdId::HeroHeroUpdatePushCmd,
                 HeroUpdatePush {
-                    hero_updates: vec![updated_hero.into()],
+                    hero_updates: vec![hero_info.into()],
                 },
             )
             .await?;

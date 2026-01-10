@@ -20,7 +20,7 @@ pub struct PlayerState {
     pub month_card_claimed: bool,
     pub last_month_card_claim_timestamp: Option<i64>,
 
-    pub last_sign_in_day: i32, // server_day
+    pub last_sign_in_day: i64, // server_day
     pub last_sign_in_time: Option<i64>,
 
     pub vip_level: i32,
@@ -122,12 +122,6 @@ impl PlayerState {
     pub fn mark_activity_pushes_sent(&mut self, current_time: i64) {
         self.last_activity_push_sent_timestamp = Some(current_time);
         self.updated_at = current_time;
-    }
-
-    pub fn record_sign_in(&mut self, now_ms: i64) {
-        self.last_sign_in_day = ServerTime::server_day(now_ms);
-        self.last_sign_in_time = Some(now_ms);
-        self.updated_at = now_ms;
     }
 
     pub fn claim_month_card(&mut self, now_ms: i64) {

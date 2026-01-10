@@ -83,6 +83,9 @@ pub async fn dispatch_command(
         CmdId::UseItemCmd => item::on_use_item,
         CmdId::EquipLockCmd => equip::on_equip_lock,
         CmdId::UseInsightItemCmd => item::on_use_insight_item,
+        CmdId::EquipStrengthenCmd => equip::on_equip_strengthen,
+        CmdId::EquipBreakCmd => equip::on_equip_break,
+        CmdId::EquipRefineCmd => equip::on_equip_refine,
 
         // === Skin & Cosmetics ===
         CmdId::UseSkinCmd => skin::on_use_skin,
@@ -152,6 +155,8 @@ pub async fn dispatch_command(
         CmdId::GetSignInInfoCmd => sign_in::on_get_sign_in_info,
         CmdId::SignInCmd => sign_in::on_sign_in,
         CmdId::SignInTotalRewardAllCmd => sign_in::on_sign_in_total_reward_all,
+        CmdId::SignInAddupCmd => sign_in::on_sign_in_addup,
+        CmdId::SignInHistoryCmd => sign_in::on_sign_in_history,
 
         // === Achievements & Tasks ===
         CmdId::GetAchievementInfoCmd => achievement::on_get_achievement_info,

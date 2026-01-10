@@ -3,6 +3,7 @@ use crate::packet::ClientPacket;
 use crate::state::ConnectionContext;
 use crate::utils::inventory::{add_currencies, add_items};
 use crate::utils::push;
+use database::models::game::heros::UserHeroModel;
 use prost::Message;
 use sonettobuf::{CmdId, ReadMailReply, ReadMailRequest};
 use std::sync::Arc;
@@ -16,6 +17,15 @@ pub async fn on_read_mail(
     tracing::info!("Received ReadMailRequest: {:?}", request);
 
     let incr_id = request.incr_id.ok_or(AppError::InvalidRequest)?;
+
+    let (player_id, pool) = {
+        let ctx_guard = ctx.lock().await;
+        let player_id = ctx_guard.player_id.ok_or(AppError::NotLoggedIn)?;
+        let pool = ctx_guard.state.db.clone();
+        (player_id, pool)
+    };
+
+    let hero = UserHeroModel::new(player_id, pool.clone());
 
     let (user_id, attachment, changed_items, changed_currencies, changed_equips, new_heroes) = {
         let ctx_guard = ctx.lock().await;
@@ -64,7 +74,7 @@ pub async fn on_read_mail(
             vec![]
         };
 
-        let equip_ids = if !equips.is_empty() {
+        let equip_uids: Vec<i64> = if !equips.is_empty() {
             database::db::game::equipment::add_equipments(
                 pool,
                 player_id,
@@ -75,7 +85,7 @@ pub async fn on_read_mail(
             )
             .await?
         } else {
-            vec![]
+            Vec::new()
         };
 
         if !power_items.is_empty() {
@@ -99,10 +109,8 @@ pub async fn on_read_mail(
         for (hero_id, _count) in &heroes {
             let hero_id = *hero_id as i32;
 
-            if database::db::game::heroes::has_hero(pool, player_id, hero_id).await? {
-                let duplicate_count =
-                    database::db::game::heroes::add_hero_duplicate(pool, player_id, hero_id)
-                        .await?;
+            if hero.has_hero(hero_id).await? {
+                let duplicate_count = hero.add_hero_duplicate(hero_id).await?;
 
                 tracing::info!(
                     "User {} already has hero {}, granted dupe rewards (duplicate #{})",
@@ -111,7 +119,7 @@ pub async fn on_read_mail(
                     duplicate_count
                 );
             } else {
-                database::db::game::heroes::create_hero(pool, player_id, hero_id).await?;
+                hero.create_hero(hero_id).await?;
                 new_heroes.push(hero_id);
                 tracing::info!("User {} received new hero {} from mail", player_id, hero_id);
             }
@@ -153,21 +161,18 @@ pub async fn on_read_mail(
             attachment,
             item_ids,
             currency_ids,
-            equip_ids,
+            equip_uids,
             new_heroes,
         )
     };
 
     if !new_heroes.is_empty() {
         let ctx_guard = ctx.lock().await;
-        let pool = &ctx_guard.state.db;
         let mut hero_infos = Vec::new();
 
         for hero_id in new_heroes {
-            if let Ok(hero) =
-                database::db::game::heroes::get_hero_by_hero_id(pool, user_id, hero_id).await
-            {
-                hero_infos.push(hero.into());
+            if let Ok(heros) = hero.get_hero(hero_id).await {
+                hero_infos.push(heros.into());
             }
         }
         drop(ctx_guard);
@@ -203,7 +208,7 @@ pub async fn on_read_mail(
     }
 
     if !changed_equips.is_empty() {
-        push::send_equip_update_push(ctx.clone(), user_id, changed_equips).await?;
+        push::send_equip_update_push_by_uid(ctx.clone(), user_id, &changed_equips).await?;
     }
 
     let mut material_changes = Vec::new();

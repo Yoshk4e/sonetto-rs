@@ -7,7 +7,7 @@ use sqlx::SqlitePool;
 /// Record sign-in for today
 async fn record_sign_in_day(pool: &SqlitePool, user_id: i64, now: i64) -> Result<bool> {
     let server_day = ServerTime::server_day(now);
-    let day_of_month = ServerTime::server_date().day() as i32;
+    let day_of_month = ServerTime::day_of_month(now) as i32;
 
     let already_signed: Option<i32> =
         sqlx::query_scalar("SELECT 1 FROM user_sign_in_days WHERE user_id = ? AND server_day = ?")
@@ -20,7 +20,6 @@ async fn record_sign_in_day(pool: &SqlitePool, user_id: i64, now: i64) -> Result
         return Ok(false);
     }
 
-    // Insert sign-in record
     sqlx::query(
         "INSERT INTO user_sign_in_days (user_id, server_day, day_of_month)
          VALUES (?, ?, ?)
@@ -103,6 +102,11 @@ pub async fn process_daily_login(pool: &SqlitePool, user_id: i64) -> Result<(boo
             .execute(pool)
             .await?;
 
+        sqlx::query("DELETE FROM user_sign_in_addup_bonus WHERE user_id = ?")
+            .bind(user_id)
+            .execute(pool)
+            .await?;
+
         reset_monthly_counters(pool, user_id).await?;
     }
 
@@ -118,7 +122,11 @@ pub async fn process_daily_login(pool: &SqlitePool, user_id: i64) -> Result<(boo
 
     let ps_rows = sqlx::query(
         "UPDATE player_state
-         SET last_sign_in_time = ?, updated_at = ?
+         SET last_sign_in_time = ?,
+            updated_at = ?,
+            initial_login_complete = 0,
+            month_card_claimed = 0,
+            last_month_card_claim_timestamp = NULL
          WHERE player_id = ?",
     )
     .bind(now)
@@ -135,7 +143,7 @@ pub async fn process_daily_login(pool: &SqlitePool, user_id: i64) -> Result<(boo
     Ok((is_new_day, is_new_week, is_new_month))
 }
 
-pub async fn process_manual_sign_in(pool: &SqlitePool, user_id: i64) -> Result<()> {
+pub async fn process_manual_sign_in(pool: &SqlitePool, user_id: i64) -> Result<bool> {
     let now = ServerTime::now_ms();
 
     let recorded = record_sign_in_day(pool, user_id, now).await?;
@@ -144,7 +152,7 @@ pub async fn process_manual_sign_in(pool: &SqlitePool, user_id: i64) -> Result<(
         tracing::info!("User {} already signed in today", user_id);
     }
 
-    Ok(())
+    Ok(recorded)
 }
 
 /// Reset daily counters (call this for any daily-reset systems)
@@ -252,6 +260,15 @@ pub async fn reset_weekly_counters(pool: &SqlitePool, user_id: i64) -> Result<()
 /// Reset monthly counters
 pub async fn reset_monthly_counters(pool: &SqlitePool, user_id: i64) -> Result<()> {
     let game_data = data::exceldb::get();
+
+    sqlx::query(
+        "UPDATE user_sign_in_info
+             SET addup_sign_in_day = 0
+             WHERE user_id = ?",
+    )
+    .bind(user_id)
+    .execute(pool)
+    .await?;
 
     let monthly_store_goods: Vec<i32> = game_data
         .store_goods
@@ -423,7 +440,6 @@ pub async fn add_sign_in_day(
     day_of_month: i32,
     now_ms: i64,
 ) -> Result<()> {
-    //Insert daily sign-in (collision-safe)
     sqlx::query(
         r#"
         INSERT INTO user_sign_in_days (user_id, server_day, day_of_month)
@@ -439,7 +455,6 @@ pub async fn add_sign_in_day(
 
     let now_sec = (now_ms / 1000) as i32;
 
-    // Increment accumulated sign-in count
     sqlx::query(
         r#"
         INSERT INTO user_sign_in_info

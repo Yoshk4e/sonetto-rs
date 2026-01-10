@@ -7,7 +7,7 @@ pub use crate::models::game::equipment::Equipment;
 /// Get all equipment for a user
 pub async fn get_user_equipment(pool: &SqlitePool, user_id: i64) -> Result<Vec<Equipment>> {
     let equipment = sqlx::query_as::<_, Equipment>(
-        "SELECT * FROM equipment WHERE user_id = ?1 ORDER BY equip_id",
+        "SELECT * FROM equipment WHERE user_id = ?1 AND count > 0 ORDER BY equip_id",
     )
     .bind(user_id)
     .fetch_all(pool)
@@ -124,7 +124,7 @@ pub async fn add_equipment(
     user_id: i64,
     equip_id: i32,
     count: i32,
-) -> Result<Vec<i32>> {
+) -> Result<Vec<i64>> {
     let now = common::time::ServerTime::now_ms();
     let game_data = data::exceldb::get();
     let equip = game_data
@@ -132,79 +132,111 @@ pub async fn add_equipment(
         .get(equip_id)
         .ok_or_else(|| anyhow::anyhow!("Equipment {} not found", equip_id))?;
 
-    let (level, break_lv, refine_lv, is_lock) = match equip.rare {
-        5 => (1, 0, 0, true),  // SSR: Level 1, locked
-        4 => (1, 0, 0, true),  // SR: locked
-        _ => (1, 0, 0, false), // Others: not locked
+    let (level, break_lv, refine_lv, mut is_lock) = match equip.rare {
+        5 => (1, 0, 1, true),
+        4 => (1, 0, 1, true),
+        _ => (1, 0, 1, false),
     };
 
-    let mut is_lock = is_lock;
-    if equip.name_en == "Enlighten" || equip.name_en == "Gluttony" || equip.name_en == "Greed" {
+    if matches!(equip.name_en.as_str(), "Enlighten" | "Gluttony" | "Greed") {
         is_lock = false;
     }
 
-    let last_uid: Option<i64> =
-        sqlx::query_scalar("SELECT MAX(uid) FROM equipment WHERE user_id = ?")
-            .bind(user_id)
-            .fetch_optional(pool)
-            .await?
-            .flatten();
+    let is_stackable = matches!(equip_id, 1002 | 1003 | 1004 | 1005);
 
-    let new_uid = last_uid.map(|uid| uid + 1).unwrap_or(30000000);
-
-    let is_stackable = equip_id == 1002 || equip_id == 1003 || equip_id == 1004 || equip_id == 1005;
+    let mut uids = Vec::new();
 
     if is_stackable {
-        sqlx::query(
-            r#"
-            INSERT INTO equipment
-              (uid, user_id, equip_id, level, exp, break_lv, count, is_lock, refine_lv, created_at, updated_at)
-            VALUES
-              (?,   ?,      ?,       ?,     ?,   ?,        ?,     ?,       ?,         ?,         ?)
-            "#,
+        // Try to find existing stack
+        if let Some(uid) = sqlx::query_scalar::<_, i64>(
+            "SELECT uid FROM equipment WHERE user_id = ? AND equip_id = ? LIMIT 1",
         )
-        .bind(new_uid)
         .bind(user_id)
         .bind(equip_id)
-        .bind(level)
-        .bind(0)
-        .bind(break_lv)
-        .bind(count)
-        .bind(is_lock)
-        .bind(refine_lv)
-        .bind(now)
-        .bind(now)
-        .execute(pool)
-        .await?;
-    } else {
-        let mut next_uid = new_uid;
-        for _ in 0..count {
+        .fetch_optional(pool)
+        .await?
+        {
+            sqlx::query(
+                r#"
+                UPDATE equipment
+                SET count = count + ?, updated_at = ?
+                WHERE uid = ? AND user_id = ?
+                "#,
+            )
+            .bind(count)
+            .bind(now)
+            .bind(uid)
+            .bind(user_id)
+            .execute(pool)
+            .await?;
+
+            uids.push(uid);
+        } else {
+            let uid = sqlx::query_scalar::<_, i64>(
+                "SELECT COALESCE(MAX(uid), 29999999) + 1 FROM equipment WHERE user_id = ?",
+            )
+            .bind(user_id)
+            .fetch_one(pool)
+            .await?;
+
             sqlx::query(
                 r#"
                 INSERT INTO equipment
                   (uid, user_id, equip_id, level, exp, break_lv, count, is_lock, refine_lv, created_at, updated_at)
                 VALUES
-                  (?,   ?,      ?,       ?,     ?,   ?,        ?,     ?,       ?,         ?,         ?)
+                  (?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)
                 "#,
             )
-            .bind(next_uid)
+            .bind(uid)
             .bind(user_id)
             .bind(equip_id)
             .bind(level)
-            .bind(0)
             .bind(break_lv)
-            .bind(1)
+            .bind(count)
             .bind(is_lock)
             .bind(refine_lv)
             .bind(now)
             .bind(now)
             .execute(pool)
             .await?;
+
+            uids.push(uid);
+        }
+    } else {
+        let mut next_uid = sqlx::query_scalar::<_, i64>(
+            "SELECT COALESCE(MAX(uid), 29999999) + 1 FROM equipment WHERE user_id = ?",
+        )
+        .bind(user_id)
+        .fetch_one(pool)
+        .await?;
+
+        for _ in 0..count {
+            sqlx::query(
+                r#"
+                INSERT INTO equipment
+                  (uid, user_id, equip_id, level, exp, break_lv, count, is_lock, refine_lv, created_at, updated_at)
+                VALUES
+                  (?, ?, ?, ?, 0, ?, 1, ?, ?, ?, ?)
+                "#,
+            )
+            .bind(next_uid)
+            .bind(user_id)
+            .bind(equip_id)
+            .bind(level)
+            .bind(break_lv)
+            .bind(is_lock)
+            .bind(refine_lv)
+            .bind(now)
+            .bind(now)
+            .execute(pool)
+            .await?;
+
+            uids.push(next_uid);
             next_uid += 1;
         }
     }
 
-    Ok(vec![equip_id])
+    Ok(uids)
 }
 
 /// Get total count of equipment by equip_id (counts all matching rows)
@@ -224,40 +256,65 @@ pub async fn update_equipment_count(
     user_id: i64,
     equip_id: i32,
     amount: i32,
-) -> Result<()> {
-    sqlx::query("UPDATE equipment SET count = count + ? WHERE user_id = ? AND equip_id = ?")
-        .bind(amount)
-        .bind(user_id)
-        .bind(equip_id)
-        .execute(pool)
-        .await?;
+) -> Result<Vec<i64>> {
+    let now = common::time::ServerTime::now_ms();
 
-    Ok(())
+    let uid = sqlx::query_scalar::<_, i64>(
+        "SELECT uid FROM equipment WHERE user_id = ? AND equip_id = ? LIMIT 1",
+    )
+    .bind(user_id)
+    .bind(equip_id)
+    .fetch_one(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        UPDATE equipment
+        SET count = count + ?, updated_at = ?
+        WHERE uid = ? AND user_id = ?
+        "#,
+    )
+    .bind(amount)
+    .bind(now)
+    .bind(uid)
+    .bind(user_id)
+    .execute(pool)
+    .await?;
+
+    Ok(vec![uid])
 }
 
 pub async fn add_equipments(
     pool: &SqlitePool,
     user_id: i64,
     equips: &[(i32, i32)],
-) -> Result<Vec<i32>> {
-    let mut changed_ids = Vec::new();
+) -> Result<Vec<i64>> {
+    let mut changed_uids = Vec::new();
 
     for (equip_id, count) in equips {
-        if *equip_id == 1002 || *equip_id == 1003 || *equip_id == 1004 || *equip_id == 1005 {
-            let existing_count = get_equipment_count(pool, user_id, *equip_id).await?;
+        let is_stackable = matches!(*equip_id, 1002 | 1003 | 1004 | 1005);
 
-            if existing_count > 0 {
+        if is_stackable {
+            if let Some(uid) = sqlx::query_scalar::<_, i64>(
+                "SELECT uid FROM equipment WHERE user_id = ? AND equip_id = ? LIMIT 1",
+            )
+            .bind(user_id)
+            .bind(equip_id)
+            .fetch_optional(pool)
+            .await?
+            {
                 update_equipment_count(pool, user_id, *equip_id, *count).await?;
+                changed_uids.push(uid);
             } else {
-                add_equipment(pool, user_id, *equip_id, *count).await?;
+                let uids = add_equipment(pool, user_id, *equip_id, *count).await?;
+                debug_assert_eq!(uids.len(), 1);
+                changed_uids.push(uids[0]);
             }
-
-            changed_ids.push(*equip_id);
         } else {
-            let ids = add_equipment(pool, user_id, *equip_id, *count).await?;
-            changed_ids.extend(ids);
+            let uids = add_equipment(pool, user_id, *equip_id, *count).await?;
+            changed_uids.extend(uids);
         }
     }
 
-    Ok(changed_ids)
+    Ok(changed_uids)
 }

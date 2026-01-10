@@ -116,7 +116,7 @@ Create a `data/` folder next to those binaries and copy `excel2json` and the `st
 * Premium shop added (can purchase premium items)
 * Shop now resets (daily, weekly and monthly)
 * Mail added (can claim rewards)
-* Insight items added
+* Insight items added (level heroes to i3 lvl 1)
 * Auto use expired items
 
 ---
@@ -125,11 +125,11 @@ Create a `data/` folder next to those binaries and copy `excel2json` and the `st
 
 * Tower battles
 * Trial heroes (buggy: replay/load not saved), not fully implemented
-* Hero talents aren't persisted or applied correctly
+* ~~Hero talents aren't persisted or applied correctly~~
 * Achievements system
 * Tasks / quest systems
 * Battle pass
-* Full currency logic (some gacha/currency flows are incomplete)
+* ~~Full currency logic (some gacha/currency flows are incomplete)~~
 * Profile picture upload/management
 * Real-time battle logic: currently battles may be fast-forwarded/skipped to the end
 * Drop rates and reward balancing need comprehensive testing
@@ -165,7 +165,7 @@ Please follow existing code style and keep changes focused per PR.
 
 ## Known bugs
 
-* **Ezio moxie display**: Ezio sometimes shows an incorrect (very large) moxie value; this is a UI/visual bug under investigation.
+* **Ezio moxie display**: Ezio sometimes shows an incorrect (very large) moxie value; (its part of the battle mechanics. since we only have bare minimum passives aren't implemented yet)
 * **Month card daily sign-in** sometimes ui pops up twice during sign in
 
 If you encounter other bugs, please open an issue with reproduction steps and relevant logs.

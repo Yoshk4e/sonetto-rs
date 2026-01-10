@@ -70,32 +70,33 @@ impl ConnectionContext {
     pub async fn load_player_state(&mut self, player_id: i64) -> Result<(), AppError> {
         self.player_id = Some(player_id);
         self.logged_in = true;
-
         let now = ServerTime::now_ms();
 
-        let state = match sqlx::query_as::<_, PlayerState>(
+        let mut state = match sqlx::query_as::<_, PlayerState>(
             "SELECT * FROM player_state WHERE player_id = ?1",
         )
         .bind(player_id)
         .fetch_optional(&self.state.db)
         .await?
         {
-            Some(mut state) => {
-                state.last_login_timestamp = Some(now);
-                state.updated_at = now;
+            Some(state) => {
+                tracing::info!("Loaded existing player state for player {}", player_id);
                 state
             }
             None => {
                 tracing::info!("Creating new player state for player {}", player_id);
-                PlayerState::new(player_id, now)
+                let new_state = PlayerState::new(player_id, now);
+
+                self.save_player_state(&new_state).await?;
+                new_state
             }
         };
 
-        self.save_player_state(&state).await?;
+        state.last_login_timestamp = Some(now);
+        state.updated_at = now;
+
         self.player_state = Some(state);
-
         tracing::info!("Loaded player state for player {}", player_id);
-
         Ok(())
     }
 

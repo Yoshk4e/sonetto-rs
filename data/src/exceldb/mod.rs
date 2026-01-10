@@ -17,8 +17,10 @@ pub mod cloth_level;
 pub mod currency;
 pub mod episode;
 pub mod equip;
+pub mod equip_break_cost;
 pub mod equip_skill;
 pub mod equip_strengthen;
+pub mod equip_strengthen_cost;
 pub mod guide;
 pub mod hero_trial;
 pub mod insight_item;
@@ -63,8 +65,10 @@ pub struct GameDB {
     pub currency: currency::CurrencyTable,
     pub episode: episode::EpisodeTable,
     pub equip: equip::EquipTable,
+    pub equip_break_cost: equip_break_cost::EquipBreakCostTable,
     pub equip_skill: equip_skill::EquipSkillTable,
     pub equip_strengthen: equip_strengthen::EquipStrengthenTable,
+    pub equip_strengthen_cost: equip_strengthen_cost::EquipStrengthenCostTable,
     pub guide: guide::GuideTable,
     pub hero_trial: hero_trial::HeroTrialTable,
     pub insight_item: insight_item::InsightItemTable,
@@ -143,12 +147,18 @@ impl GameDB {
         let equip = equip::EquipTable::load(
             &format!("{}/equip.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load equip.json: {}", e))?;
+        let equip_break_cost = equip_break_cost::EquipBreakCostTable::load(
+            &format!("{}/equip_break_cost.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load equip_break_cost.json: {}", e))?;
         let equip_skill = equip_skill::EquipSkillTable::load(
             &format!("{}/equip_skill.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load equip_skill.json: {}", e))?;
         let equip_strengthen = equip_strengthen::EquipStrengthenTable::load(
             &format!("{}/equip_strengthen.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load equip_strengthen.json: {}", e))?;
+        let equip_strengthen_cost = equip_strengthen_cost::EquipStrengthenCostTable::load(
+            &format!("{}/equip_strengthen_cost.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load equip_strengthen_cost.json: {}", e))?;
         let guide = guide::GuideTable::load(
             &format!("{}/guide.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load guide.json: {}", e))?;
@@ -237,8 +247,10 @@ impl GameDB {
             currency,
             episode,
             equip,
+            equip_break_cost,
             equip_skill,
             equip_strengthen,
+            equip_strengthen_cost,
             guide,
             hero_trial,
             insight_item,

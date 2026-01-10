@@ -2,7 +2,7 @@ use crate::error::AppError;
 use crate::packet::ClientPacket;
 use crate::state::ConnectionContext;
 use crate::utils::push;
-use database::db::game::equipment;
+use database::models::game::equipment::UserEquipmentModel;
 use prost::Message;
 use sonettobuf::{CmdId, EquipLockReply, EquipLockRequest};
 use std::sync::Arc;
@@ -21,13 +21,12 @@ pub async fn on_equip_lock(
         let player_id = ctx_guard.player_id.ok_or(AppError::NotLoggedIn)?;
         let pool = &ctx_guard.state.db;
 
-        let updated = equipment::update_equipment_lock(pool, player_id, target_uid, lock).await?;
+        let equip = UserEquipmentModel::new(player_id, pool.clone());
+
+        let updated = equip.update_equipment_lock(target_uid, lock).await?;
 
         let equip_id = if updated {
-            equipment::get_equipment_by_uid(pool, player_id, target_uid)
-                .await
-                .ok()
-                .map(|e| e.equip_id)
+            equip.get_equip(target_uid).await.ok().map(|e| e.equip_id)
         } else {
             None
         };

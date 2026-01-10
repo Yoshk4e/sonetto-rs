@@ -3,7 +3,7 @@ use sqlx::SqlitePool;
 
 use crate::error::AppError;
 use data::exceldb;
-use database::db::game::heroes;
+use database::models::game::heros::{HeroModel, UserHeroModel};
 use sonettobuf::{CardInfo, CardInfoPush, FightGroup};
 
 // Core deck generation
@@ -49,8 +49,6 @@ pub async fn generate_initial_deck(
     })
 }
 
-
-
 #[allow(dead_code)]
 fn draw_cards_no_merge(candidates: Vec<CardInfo>, max_cards: usize) -> Vec<CardInfo> {
     let mut rng = thread_rng();
@@ -79,6 +77,8 @@ async fn build_candidate_pool(
     let mut pool_cards = Vec::new();
     let game_data = exceldb::get();
 
+    let hero = UserHeroModel::new(user_id, pool.clone());
+
     for &hero_uid in hero_uids {
         let hero_id = if hero_uid < 0 {
             // Trial hero - load from static data
@@ -103,7 +103,7 @@ async fn build_candidate_pool(
             trial_data.hero_id
         } else {
             // Regular hero - load from database
-            let hero = heroes::get_hero_by_hero_uid(pool, user_id, hero_uid as i32).await?;
+            let hero = hero.get_uid(hero_uid as i32).await?;
             hero.record.hero_id
         };
 
@@ -177,7 +177,6 @@ fn draw_cards_with_merge(candidates: Vec<CardInfo>, max_cards: usize) -> Vec<Car
 
 fn get_hero_skills(hero_id: i32) -> Vec<i32> {
     let game_data = exceldb::get();
-
 
     let character = game_data.character.iter().find(|c| c.id == hero_id);
 

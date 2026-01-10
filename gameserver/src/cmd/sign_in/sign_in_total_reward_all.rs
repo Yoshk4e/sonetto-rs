@@ -11,7 +11,7 @@ pub async fn on_sign_in_total_reward_all(
     ctx: Arc<Mutex<ConnectionContext>>,
     req: ClientPacket,
 ) -> Result<(), AppError> {
-    let _request = SignInTotalRewardAllRequest::decode(&req.data[..]);
+    let _ = SignInTotalRewardAllRequest::decode(&req.data[..]);
 
     let reply = SignInTotalRewardAllReply { mark: Some(1022) };
 

@@ -93,10 +93,43 @@ pub async fn remove_item_quantity(
 }
 
 pub async fn get_all_power_items(pool: &SqlitePool, user_id: i64) -> sqlx::Result<Vec<PowerItem>> {
-    sqlx::query_as("SELECT * FROM power_items WHERE user_id = ? AND expire_time > strftime('%s', 'now') ORDER BY expire_time")
-        .bind(user_id)
-        .fetch_all(pool)
-        .await
+    sqlx::query_as(
+        r#"
+
+        SELECT
+            uid,
+            user_id,
+            item_id,
+            quantity,
+            expire_time,
+            created_at
+        FROM power_items
+        WHERE user_id = ?
+          AND expire_time = 0
+        GROUP BY user_id, item_id
+
+        UNION ALL
+
+
+        SELECT
+            MIN(uid)              AS uid,
+            user_id               AS user_id,
+            item_id               AS item_id,
+            SUM(quantity)         AS quantity,
+            MIN(expire_time)      AS expire_time,
+            MIN(created_at)       AS created_at
+        FROM power_items
+        WHERE user_id = ?
+          AND expire_time > CAST(strftime('%s','now') AS INTEGER)
+        GROUP BY user_id, item_id
+
+        ORDER BY expire_time ASC
+        "#,
+    )
+    .bind(user_id)
+    .bind(user_id)
+    .fetch_all(pool)
+    .await
 }
 
 pub async fn get_power_item(

@@ -29,7 +29,6 @@ pub async fn on_begin_round(
         request.auto_oper.unwrap_or(false)
     );
 
-    // Get active battle context
     let (
         fight,
         current_deck,
@@ -68,7 +67,6 @@ pub async fn on_begin_round(
         )
     };
 
-    // Process battle round
     let mut simulator = BattleSimulator::new(fight);
     let mut round = simulator
         .process_round(request.opers.clone(), current_deck)
@@ -86,7 +84,6 @@ pub async fn on_begin_round(
         round.is_finish.unwrap_or(false)
     );
 
-    // Send reply first
     let reply = BeginRoundReply {
         round: Some(round.clone()),
     };
@@ -98,7 +95,6 @@ pub async fn on_begin_round(
             .await?;
     }
 
-    // Only save for real battles (not replays)
     if !is_replay {
         // Save operations for replay
         save_round_operations(
@@ -116,7 +112,6 @@ pub async fn on_begin_round(
         let stars_earned = 2; // TODO: Calculate based on performance
         update_dungeon_progress(&pool, player_id, chapter_id, episode_id, stars_earned).await?;
 
-        // Save dungeon record if it's a new best or different lineup
         let should_save_record =
             should_update_dungeon_record(&pool, player_id, episode_id, record_round, &fight_group)
                 .await?;
@@ -148,7 +143,6 @@ pub async fn on_begin_round(
         );
     }
 
-    // Send pushes regardless (client needs them to exit battle properly)
     send_end_fight_push(
         ctx.clone(),
         battle_id,
@@ -167,10 +161,8 @@ pub async fn on_begin_round(
         "dungeon/instruction_dungeon_info.json"
     );
 
-    // Update dungeon UI with current state (always, even for replays)
     let updated_dungeon = get_user_dungeon(&pool, player_id, chapter_id, episode_id).await?;
 
-    // Get chapter type from Excel data
     let game_data = data::exceldb::get();
     let chapter_type = game_data
         .chapter

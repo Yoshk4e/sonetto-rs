@@ -3,6 +3,7 @@ use crate::state::ConnectionContext;
 use crate::utils::inventory::{add_currencies, add_items};
 use crate::utils::push;
 use database::db::{game, user};
+use database::models::game::heros::UserHeroModel;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -156,13 +157,15 @@ async fn cmd_hero(ctx: CommandContext) -> Result<String, AppError> {
         return Ok(format!("Invalid hero ID: {}", hero_id));
     }
 
-    let db = ctx.ctx.lock().await.state.db.clone();
+    let pool = ctx.ctx.lock().await.state.db.clone();
 
-    if game::heroes::has_hero(&db, ctx.user_id, hero_id).await? {
+    let hero = UserHeroModel::new(ctx.user_id, pool);
+
+    if hero.has_hero(hero_id).await? {
         return Ok(format!("You already have hero {}", hero_id));
     }
 
-    game::heroes::create_hero(&db, ctx.user_id, hero_id).await?;
+    hero.create_hero(hero_id).await?;
 
     Ok(format!("Added hero {}", hero_id))
 }
@@ -189,16 +192,14 @@ async fn cmd_equip(ctx: CommandContext) -> Result<String, AppError> {
 
     let db = ctx.ctx.lock().await.state.db.clone();
 
-    let equip_uids = if equip_id == 1002 || equip_id == 1003 || equip_id == 1004 || equip_id == 1005
-    {
-        game::equipment::update_equipment_count(&db, ctx.user_id, equip_id, amount).await?;
+    let equip_uids: Vec<i64> =
+        if equip_id == 1002 || equip_id == 1003 || equip_id == 1004 || equip_id == 1005 {
+            game::equipment::update_equipment_count(&db, ctx.user_id, equip_id, amount).await?
+        } else {
+            game::equipment::add_equipments(&db, ctx.user_id, &[(equip_id, amount)]).await?
+        };
 
-        vec![equip_id]
-    } else {
-        game::equipment::add_equipments(&db, ctx.user_id, &[(equip_id, amount)]).await?
-    };
-
-    push::send_equip_update_push(ctx.ctx.clone(), ctx.user_id, equip_uids).await?;
+    push::send_equip_update_push_by_uid(ctx.ctx.clone(), ctx.user_id, &equip_uids).await?;
 
     let material_changes = vec![(9, equip_id as u32, amount)];
     push::send_material_change_push(ctx.ctx.clone(), material_changes, None).await?;

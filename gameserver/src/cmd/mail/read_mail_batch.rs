@@ -3,6 +3,7 @@ use crate::packet::ClientPacket;
 use crate::state::ConnectionContext;
 use crate::utils::inventory::{add_currencies, add_items};
 use crate::utils::push;
+use database::models::game::heros::UserHeroModel;
 use prost::Message;
 use sonettobuf::{CmdId, ReadMailBatchReply, ReadMailBatchRequest};
 use std::sync::Arc;
@@ -16,6 +17,15 @@ pub async fn on_read_mail_batch(
     let r#type = request.r#type.ok_or(AppError::InvalidRequest)?;
 
     tracing::info!("Received ReadMailBatchRequest type {}", r#type);
+
+    let (player_id, pool) = {
+        let ctx_guard = ctx.lock().await;
+        let player_id = ctx_guard.player_id.ok_or(AppError::NotLoggedIn)?;
+        let pool = ctx_guard.state.db.clone();
+        (player_id, pool)
+    };
+
+    let hero = UserHeroModel::new(player_id, pool.clone());
 
     let (
         user_id,
@@ -76,7 +86,7 @@ pub async fn on_read_mail_batch(
             vec![]
         };
 
-        let equip_ids = if !total_equips.is_empty() {
+        let equip_uids = if !total_equips.is_empty() {
             database::db::game::equipment::add_equipments(
                 pool,
                 player_id,
@@ -87,7 +97,7 @@ pub async fn on_read_mail_batch(
             )
             .await?
         } else {
-            vec![]
+            Vec::new()
         };
 
         if !total_power_items.is_empty() {
@@ -111,10 +121,8 @@ pub async fn on_read_mail_batch(
         for (hero_id, _count) in &total_heroes {
             let hero_id = *hero_id as i32;
 
-            if database::db::game::heroes::has_hero(pool, player_id, hero_id).await? {
-                let duplicate_count =
-                    database::db::game::heroes::add_hero_duplicate(pool, player_id, hero_id)
-                        .await?;
+            if hero.has_hero(hero_id).await? {
+                let duplicate_count = hero.add_hero_duplicate(hero_id).await?;
 
                 tracing::info!(
                     "User {} already has hero {}, granted dupe rewards (duplicate #{})",
@@ -123,7 +131,7 @@ pub async fn on_read_mail_batch(
                     duplicate_count
                 );
             } else {
-                database::db::game::heroes::create_hero(pool, player_id, hero_id).await?;
+                hero.create_hero(hero_id).await?;
                 new_heroes.push(hero_id);
                 tracing::info!(
                     "User {} received new hero {} from batch mail",
@@ -190,7 +198,7 @@ pub async fn on_read_mail_batch(
             mail_ids,
             item_ids,
             currency_ids,
-            equip_ids,
+            equip_uids,
             new_heroes,
             material_changes,
         )
@@ -199,13 +207,11 @@ pub async fn on_read_mail_batch(
     // Send hero update push AFTER dropping ctx_guard
     if !new_heroes.is_empty() {
         let ctx_guard = ctx.lock().await;
-        let pool = &ctx_guard.state.db;
+
         let mut hero_infos = Vec::new();
 
         for hero_id in new_heroes {
-            if let Ok(hero) =
-                database::db::game::heroes::get_hero_by_hero_id(pool, user_id, hero_id).await
-            {
+            if let Ok(hero) = hero.get_hero(hero_id).await {
                 hero_infos.push(hero.into());
             }
         }
@@ -242,7 +248,7 @@ pub async fn on_read_mail_batch(
     }
 
     if !all_equips.is_empty() {
-        push::send_equip_update_push(ctx.clone(), user_id, all_equips).await?;
+        push::send_equip_update_push_by_uid(ctx.clone(), user_id, &all_equips).await?;
     }
 
     if !all_material_changes.is_empty() {

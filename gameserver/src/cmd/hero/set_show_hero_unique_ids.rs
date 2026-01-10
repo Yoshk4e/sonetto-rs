@@ -1,7 +1,10 @@
 use crate::error::AppError;
 use crate::packet::ClientPacket;
 use crate::state::ConnectionContext;
-use database::db::game::{player_infos::get_player_info_data, player_infos::set_show_hero};
+use database::{
+    db::game::player_infos::get_player_info_data,
+    models::game::heros::{HeroModel, UserHeroModel},
+};
 use prost::Message;
 use sonettobuf::{CmdId, PlayerInfoPush, SetShowHeroUniqueIdsReply, SetShowHeroUniqueIdsRequest};
 use std::sync::Arc;
@@ -18,7 +21,9 @@ pub async fn on_set_show_hero_unique_ids(
     let player_id = ctx_guard.player_id.ok_or(AppError::NotLoggedIn)?;
     let pool = &ctx_guard.state.db;
 
-    set_show_hero(pool, player_id, &hero_uids)
+    let hero = UserHeroModel::new(player_id, pool.clone());
+
+    hero.set_show_hero(&hero_uids)
         .await
         .map_err(AppError::from)?;
 

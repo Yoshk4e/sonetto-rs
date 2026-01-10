@@ -1,7 +1,8 @@
 use crate::error::AppError;
 use crate::packet::ClientPacket;
 use crate::state::ConnectionContext;
-use database::db::game::heroes;
+
+use database::models::game::heros::{HeroModel, UserHeroModel};
 use prost::Message;
 use sonettobuf::{CmdId, HeroTouchReply, HeroTouchRequest};
 use std::sync::Arc;
@@ -19,8 +20,9 @@ pub async fn on_hero_touch(
         let player_id = ctx_guard.player_id.ok_or(AppError::NotLoggedIn)?;
         let pool = &ctx_guard.state.db;
 
-        // Try to use a touch
-        match heroes::use_touch(pool, player_id).await? {
+        let hero = UserHeroModel::new(player_id, pool.clone());
+
+        match hero.use_touch().await? {
             Some(new_count) => {
                 tracing::info!(
                     "User {} touched hero {}, {} touches remaining",

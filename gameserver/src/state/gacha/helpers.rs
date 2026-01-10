@@ -27,6 +27,32 @@ pub fn parse_id_list(s: &str) -> Vec<i32> {
     s.split('#').filter_map(|x| x.parse::<i32>().ok()).collect()
 }
 
+pub fn parse_weighted_id_list(s: &str) -> Vec<(i32, u32)> {
+    if s.is_empty() {
+        return Vec::new();
+    }
+
+    s.split('|')
+        .map(|part| {
+            let mut it = part.split('#');
+
+            let id: i32 = it
+                .next()
+                .expect("missing id")
+                .parse()
+                .expect("bad id");
+
+            let weight: u32 = it
+                .next()
+                .expect("missing weight")
+                .parse()
+                .expect("bad weight");
+
+            (id, weight)
+        })
+        .collect()
+}
+
 pub fn parse_dupe_rewards(s: &str) -> (Vec<(u32, i32)>, Vec<(i32, i32)>) {
     if s.is_empty() {
         return (Vec::new(), Vec::new());
@@ -134,6 +160,20 @@ pub fn pick_weighted<T: Copy>(items: &[(T, f64)], rng: &mut impl Rng) -> T {
     }
 
     items.last().unwrap().0
+}
+
+pub fn choose_weighted(rng: &mut impl rand::Rng, items: &[(i32, u32)]) -> i32 {
+    let total: u32 = items.iter().map(|(_, w)| *w).sum();
+    let mut roll = rng.gen_range(0..total);
+
+    for (id, weight) in items {
+        if roll < *weight {
+            return *id;
+        }
+        roll -= *weight;
+    }
+
+    unreachable!("weighted selection failed")
 }
 
 pub fn parse_item(effect: &str) -> Option<(Vec<(u32, i32)>, Vec<(i32, i32)>)> {

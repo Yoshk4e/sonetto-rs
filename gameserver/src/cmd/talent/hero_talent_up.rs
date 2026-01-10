@@ -1,7 +1,10 @@
 use crate::error::AppError;
 use crate::packet::ClientPacket;
 use crate::state::ConnectionContext;
-use database::db::game::heroes;
+use database::models::game::{
+    heros::{HeroModel, UserHeroModel},
+    items::UserItemModel,
+};
 use prost::Message;
 use sonettobuf::{CmdId, HeroTalentUpReply, HeroTalentUpRequest, HeroUpdatePush};
 use std::sync::Arc;
@@ -16,13 +19,22 @@ pub async fn on_hero_talent_up(
 
     let hero_id = request.hero_id.ok_or(AppError::InvalidRequest)?;
 
-    let (user_id, new_talent_id) = {
+    let (player_id, pool) = {
         let ctx_guard = ctx.lock().await;
         let player_id = ctx_guard.player_id.ok_or(AppError::NotLoggedIn)?;
-        let pool = &ctx_guard.state.db;
+        let pool = ctx_guard.state.db.clone();
+        (player_id, pool)
+    };
 
-        let hero = heroes::get_hero_by_hero_id(pool, player_id, hero_id).await?;
-        let current_talent = hero.record.talent;
+    let hero = UserHeroModel::new(player_id, pool.clone());
+    let item = UserItemModel::new(player_id, pool.clone());
+
+    let new_talent_id = {
+        let ctx_guard = ctx.lock().await;
+
+        let hero_data = hero.get(hero_id).await?;
+
+        let current_talent = hero_data.record.talent;
         let new_talent = current_talent + 1;
 
         let game_data = data::exceldb::get();
@@ -45,7 +57,7 @@ pub async fn on_hero_talent_up(
                 drop(ctx_guard);
 
                 let mut ctx_guard = ctx.lock().await;
-                let hero_proto: sonettobuf::HeroInfo = hero.into();
+                let hero_proto: sonettobuf::HeroInfo = hero_data.into();
                 ctx_guard
                     .send_push(
                         CmdId::HeroHeroUpdatePushCmd,
@@ -62,11 +74,11 @@ pub async fn on_hero_talent_up(
             }
         };
 
-        if hero.record.rank < talent_config.requirement {
+        if hero_data.record.rank < talent_config.requirement {
             tracing::info!(
                 "Hero {} rank {} does not meet talent {} requirement (needs rank {})",
                 hero_id,
-                hero.record.rank,
+                hero_data.record.rank,
                 new_talent,
                 talent_config.requirement
             );
@@ -79,7 +91,7 @@ pub async fn on_hero_talent_up(
             drop(ctx_guard);
 
             let mut ctx_guard = ctx.lock().await;
-            let hero_proto: sonettobuf::HeroInfo = hero.into();
+            let hero_proto: sonettobuf::HeroInfo = hero_data.into();
             ctx_guard
                 .send_push(
                     CmdId::HeroHeroUpdatePushCmd,
@@ -102,7 +114,8 @@ pub async fn on_hero_talent_up(
                     let item_id: u32 = parts[1].parse().map_err(|_| AppError::InvalidRequest)?;
                     let amount: i32 = parts[2].parse().map_err(|_| AppError::InvalidRequest)?;
 
-                    let current = database::db::game::items::get_item(pool, player_id, item_id)
+                    let current = item
+                        .get_item(item_id)
                         .await?
                         .map(|i| i.quantity)
                         .unwrap_or(0);
@@ -151,20 +164,12 @@ pub async fn on_hero_talent_up(
                     let item_id: u32 = parts[1].parse().unwrap();
                     let amount: i32 = parts[2].parse().unwrap();
 
-                    database::db::game::items::remove_item_quantity(
-                        pool, player_id, item_id, amount,
-                    )
-                    .await?;
+                    item.remove_item_quantity(item_id, amount).await?;
                 }
             }
         }
 
-        sqlx::query("UPDATE heroes SET talent = ? WHERE uid = ? AND user_id = ?")
-            .bind(new_talent)
-            .bind(hero.record.uid)
-            .bind(player_id)
-            .execute(pool)
-            .await?;
+        hero.update_talent(hero_id, new_talent).await?;
 
         tracing::info!(
             "User {} upgraded hero {} talent from {} to {}",
@@ -174,7 +179,7 @@ pub async fn on_hero_talent_up(
             new_talent
         );
 
-        (player_id, new_talent)
+        new_talent
     };
 
     let data = HeroTalentUpReply {
@@ -185,13 +190,14 @@ pub async fn on_hero_talent_up(
     {
         let mut ctx_guard = ctx.lock().await;
 
-        let updated_hero =
-            heroes::get_hero_by_hero_id(&ctx_guard.state.db, user_id, hero_id).await?;
+        let hero_data = hero.get(hero_id).await?;
+        let hero_info: sonettobuf::HeroInfo = hero_data.into();
+
         ctx_guard
             .send_push(
                 CmdId::HeroHeroUpdatePushCmd,
                 HeroUpdatePush {
-                    hero_updates: vec![updated_hero.into()],
+                    hero_updates: vec![hero_info.into()],
                 },
             )
             .await?;

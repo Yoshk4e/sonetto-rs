@@ -72,19 +72,30 @@ pub async fn on_login(
     {
         let mut ctx_guard = ctx.lock().await;
         let now = ServerTime::now_ms();
+        let today = ServerTime::server_day(now);
+
         ctx_guard
             .update_and_save_player_state(|state| {
-                state.last_sign_in_time = Some(now);
-                state.last_sign_in_day = ServerTime::server_day(now);
+                state.last_login_timestamp = Some(now);
+
                 if state.is_new_server_day(now) {
+                    state.initial_login_complete = false;
+                    state.last_sign_in_day = today;
                     state.last_daily_reset_time = Some(now);
+                    state.month_card_claimed = false;
+                    state.last_month_card_claim_timestamp = None;
                 }
+
                 if state.is_new_week(now) {
                     state.last_weekly_reset_time = Some(now);
                 }
+
                 if state.is_new_month(now) {
                     state.last_monthly_reset_time = Some(now);
                 }
+
+                state.mark_login_complete(now);
+                state.last_sign_in_time = Some(now);
             })
             .await?;
     }

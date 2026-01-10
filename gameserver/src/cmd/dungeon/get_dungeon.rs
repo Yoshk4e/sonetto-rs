@@ -90,7 +90,7 @@ async fn send_dungeon_info_pushes(
             ctx_guard
                 .send_push(CmdId::DungeonInfosPushCmd, push)
                 .await?;
-        } // ctx_guard dropped here
+        }
 
         tracing::debug!("Sent dungeon push chunk {} for user {}", i + 1, user_id);
     }

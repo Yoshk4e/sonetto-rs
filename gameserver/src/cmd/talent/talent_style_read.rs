@@ -1,7 +1,7 @@
 use crate::error::AppError;
 use crate::packet::ClientPacket;
 use crate::state::ConnectionContext;
-use database::db::game::heroes;
+use database::models::game::heros::{HeroModel, UserHeroModel};
 use prost::Message;
 use sonettobuf::{CmdId, HeroUpdatePush, TalentStyleReadReply, TalentStyleReadRequest};
 use std::sync::Arc;
@@ -16,12 +16,14 @@ pub async fn on_talent_style_read(
 
     let hero_id = request.hero_id.ok_or(AppError::InvalidRequest)?;
 
-    let user_id = {
+    let (user_id, pool) = {
         let ctx_guard = ctx.lock().await;
         let player_id = ctx_guard.player_id.ok_or(AppError::NotLoggedIn)?;
-
-        player_id
+        let pool = ctx_guard.state.db.clone();
+        (player_id, pool)
     };
+
+    let hero = UserHeroModel::new(user_id, pool);
 
     let data = TalentStyleReadReply {
         hero_id: Some(hero_id),
@@ -30,13 +32,14 @@ pub async fn on_talent_style_read(
     {
         let mut ctx_guard = ctx.lock().await;
 
-        let updated_hero =
-            heroes::get_hero_by_hero_id(&ctx_guard.state.db, user_id, hero_id).await?;
+        let updated_hero = hero.get(hero_id).await?;
+        let hero_info: sonettobuf::HeroInfo = updated_hero.into();
+
         ctx_guard
             .send_push(
                 CmdId::HeroHeroUpdatePushCmd,
                 HeroUpdatePush {
-                    hero_updates: vec![updated_hero.into()],
+                    hero_updates: vec![hero_info],
                 },
             )
             .await?;

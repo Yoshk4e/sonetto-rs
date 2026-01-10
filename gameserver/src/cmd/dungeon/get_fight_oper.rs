@@ -29,10 +29,8 @@ pub async fn on_get_fight_oper(
     };
 
     let oper_records = if is_replay {
-        // Load recorded operations from DB
         load_battle_replay(&pool, player_id, episode_id).await?
     } else {
-        // Not a replay, return empty
         vec![]
     };
 

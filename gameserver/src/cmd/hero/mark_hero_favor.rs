@@ -1,7 +1,7 @@
 use crate::error::AppError;
 use crate::packet::ClientPacket;
 use crate::state::ConnectionContext;
-use database::db::game::heroes;
+use database::models::game::heros::{HeroModel, UserHeroModel};
 use prost::Message;
 use sonettobuf::{CmdId, HeroUpdatePush, MarkHeroFavorReply, MarkHeroFavorRequest};
 use std::sync::Arc;
@@ -17,49 +17,37 @@ pub async fn on_mark_hero_favor(
     let hero_id = request.hero_id.ok_or(AppError::InvalidRequest)?;
     let is_favor = request.is_favor.ok_or(AppError::InvalidRequest)?;
 
-    let updated_hero = {
+    let (player_id, pool) = {
         let ctx_guard = ctx.lock().await;
         let player_id = ctx_guard.player_id.ok_or(AppError::NotLoggedIn)?;
-        let pool = &ctx_guard.state.db;
-
-        // Get hero
-        let mut hero = heroes::get_hero_by_hero_id(pool, player_id, hero_id).await?;
-
-        // Set favor status
-        if hero.record.is_favor != is_favor {
-            sqlx::query("UPDATE heroes SET is_favor = ? WHERE uid = ?")
-                .bind(is_favor)
-                .bind(hero.record.uid)
-                .execute(pool)
-                .await?;
-
-            hero.record.is_favor = is_favor;
-        }
-
-        tracing::info!(
-            "User {} set hero {} favorite status to {}",
-            player_id,
-            hero_id,
-            is_favor
-        );
-        hero
+        let pool = ctx_guard.state.db.clone();
+        (player_id, pool)
     };
 
-    // Send main reply
+    let hero = UserHeroModel::new(player_id, pool);
+    hero.set_favor(hero_id, is_favor).await?;
+
+    tracing::info!(
+        "User {} set hero {} favorite status to {}",
+        player_id,
+        hero_id,
+        is_favor
+    );
+
     let data = MarkHeroFavorReply {
         hero_id: Some(hero_id),
         is_favor: Some(is_favor),
     };
 
     {
-        let mut ctx_guard = ctx.lock().await;
+        let updated_hero = hero.get(hero_id).await?;
 
-        // Send hero update push so client refreshes the UI
         let hero_proto: sonettobuf::HeroInfo = updated_hero.into();
         let push = HeroUpdatePush {
             hero_updates: vec![hero_proto],
         };
 
+        let mut ctx_guard = ctx.lock().await;
         ctx_guard
             .send_push(CmdId::HeroHeroUpdatePushCmd, push)
             .await?;

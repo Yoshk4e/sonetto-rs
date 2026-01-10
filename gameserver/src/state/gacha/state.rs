@@ -4,6 +4,7 @@ use rand::{Rng, seq::SliceRandom};
 
 #[derive(Debug, Clone, Copy)]
 pub enum BannerType {
+    Yearning,
     RateUp,
     Ripple,
     Standard,
@@ -12,6 +13,7 @@ pub enum BannerType {
 impl BannerType {
     pub fn from(t: i32) -> Self {
         match t {
+            202 => BannerType::Yearning,
             12 => BannerType::Ripple,
             2 => BannerType::Standard,
             _ => BannerType::RateUp,
@@ -94,6 +96,38 @@ impl GachaState {
                             .six_up
                             .choose(rng)
                             .expect("Ripple requires at least one UP hero")
+                    } else {
+                        *pool.six_normal.choose(rng).expect("six_normal empty")
+                    };
+
+                    (hero_id, is_up)
+                }
+
+                BannerType::Yearning => {
+                    let has_up = !pool.six_up.is_empty();
+
+                    let is_up = if has_up {
+                        if self.up_guaranteed {
+                            self.up_guaranteed = false;
+                            true
+                        } else {
+                            let hit = rng.gen_bool(0.7);
+                            if !hit {
+                                self.up_guaranteed = true;
+                            }
+                            hit
+                        }
+                    } else {
+                        self.up_guaranteed = false;
+                        false
+                    };
+
+                    let hero_id = if is_up {
+                        if !pool.six_up_weighted.is_empty() {
+                            choose_weighted(rng, &pool.six_up_weighted)
+                        } else {
+                            *pool.six_up.choose(rng).unwrap()
+                        }
                     } else {
                         *pool.six_normal.choose(rng).expect("six_normal empty")
                     };

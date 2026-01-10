@@ -1,7 +1,7 @@
 use crate::error::AppError;
 use crate::packet::ClientPacket;
 use crate::state::ConnectionContext;
-use database::db::game::heroes;
+use database::models::game::heros::{HeroModel, UserHeroModel};
 use prost::Message;
 use sonettobuf::{CmdId, DestinyStoneUseReply, DestinyStoneUseRequest, HeroUpdatePush};
 use std::sync::Arc;
@@ -22,11 +22,12 @@ pub async fn on_destiny_stone_use(
         let player_id = ctx_guard.player_id.ok_or(AppError::NotLoggedIn)?;
         let pool = &ctx_guard.state.db;
 
-        // Get hero
-        let mut hero = heroes::get_hero_by_hero_id(pool, player_id, hero_id).await?;
+        let hero = UserHeroModel::new(player_id, pool.clone());
+        let hero_data = hero.get(hero_id).await?;
 
-        // Update destiny stone
-        hero.update_destiny_stone(pool, stone_id).await?;
+        let hero_info: sonettobuf::HeroInfo = hero_data.into();
+
+        hero.update_destiny_stone(hero_id, stone_id).await?;
 
         tracing::info!(
             "User {} equipped destiny stone {} on hero {}",
@@ -34,7 +35,7 @@ pub async fn on_destiny_stone_use(
             stone_id,
             hero_id
         );
-        hero
+        hero_info
     };
 
     let data = DestinyStoneUseReply {

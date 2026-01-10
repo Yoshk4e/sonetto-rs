@@ -1,7 +1,7 @@
 use crate::error::AppError;
 use crate::packet::ClientPacket;
 use crate::state::ConnectionContext;
-use database::db::game::heroes;
+use database::models::game::heros::{HeroModel, UserHeroModel};
 use prost::Message;
 use sonettobuf::{CmdId, HeroUpdatePush, UseSkinReply, UseSkinRequest};
 use std::sync::Arc;
@@ -22,11 +22,11 @@ pub async fn on_use_skin(
         let player_id = ctx_guard.player_id.ok_or(AppError::NotLoggedIn)?;
         let pool = &ctx_guard.state.db;
 
-        // Get hero
-        let mut hero = heroes::get_hero_by_hero_id(pool, player_id, hero_id).await?;
+        let hero = UserHeroModel::new(player_id, pool.clone());
+        let hero_data = hero.get(hero_id).await?;
+        let hero_info: sonettobuf::HeroInfo = hero_data.into();
 
-        // Update skin
-        hero.update_skin(pool, skin_id).await?;
+        hero.update_skin(hero_id, skin_id).await?;
 
         tracing::info!(
             "User {} equipped skin {} on hero {}",
@@ -34,7 +34,7 @@ pub async fn on_use_skin(
             skin_id,
             hero_id
         );
-        hero
+        hero_info
     };
 
     let data = UseSkinReply {

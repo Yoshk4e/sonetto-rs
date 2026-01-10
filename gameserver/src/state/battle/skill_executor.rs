@@ -353,11 +353,20 @@ impl SkillExecutor {
 
     fn resolve_target(&self, caster_uid: i64, target_uid: i64, behavior_target: i32) -> i64 {
         match behavior_target {
-            103 => caster_uid, // Self
-            1 => target_uid,   // Single enemy
-            101 => caster_uid, // Ally team (TODO: all allies)
-            201 => target_uid, // Enemy team (TODO: all enemies)
-            _ => target_uid,
+            103 => caster_uid, // Self - buff yourself
+            102 => caster_uid, // Self
+            101 => caster_uid, // Random ally (for now, use caster)
+            1 => target_uid,   // Single target (use skill target)
+            2 => target_uid,   // Random enemy (use skill target)
+            201 => target_uid, // All enemies (for now, use skill target)
+            202 => target_uid, // Random enemies
+            _ => {
+                tracing::warn!(
+                    "Unknown behavior_target: {}, using skill target",
+                    behavior_target
+                );
+                target_uid
+            }
         }
     }
 

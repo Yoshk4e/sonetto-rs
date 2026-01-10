@@ -1,7 +1,7 @@
 use crate::error::AppError;
 use crate::packet::ClientPacket;
 use crate::state::ConnectionContext;
-use database::db::game::heroes;
+use database::models::game::heros::{HeroModel, UserHeroModel};
 use prost::Message;
 use sonettobuf::{CmdId, HeroDefaultEquipReply, HeroDefaultEquipRequest, HeroUpdatePush};
 use std::sync::Arc;
@@ -17,41 +17,37 @@ pub async fn on_hero_default_equip(
     let hero_id = request.hero_id.ok_or(AppError::InvalidRequest)?;
     let equip_uid = request.default_equip_uid.ok_or(AppError::InvalidRequest)?;
 
-    let updated_hero = {
+    let (player_id, pool) = {
         let ctx_guard = ctx.lock().await;
         let player_id = ctx_guard.player_id.ok_or(AppError::NotLoggedIn)?;
-        let pool = &ctx_guard.state.db;
-
-        // Get hero
-        let mut hero = heroes::get_hero_by_hero_id(pool, player_id, hero_id).await?;
-
-        // Update equipped gear
-        hero.update_equipped_gear(pool, equip_uid).await?;
-
-        tracing::info!(
-            "User {} equipped gear {} on hero {}",
-            player_id,
-            equip_uid,
-            hero_id
-        );
-        hero
+        let pool = ctx_guard.state.db.clone();
+        (player_id, pool)
     };
 
-    // Send main reply
+    let hero = UserHeroModel::new(player_id, pool);
+    hero.update_equipped_gear(hero_id, equip_uid).await?;
+
+    tracing::info!(
+        "User {} equipped gear {} on hero {}",
+        player_id,
+        equip_uid,
+        hero_id
+    );
+
     let data = HeroDefaultEquipReply {
         hero_id: Some(hero_id),
         default_equip_uid: Some(equip_uid),
     };
 
     {
-        let mut ctx_guard = ctx.lock().await;
+        let updated_hero = hero.get(hero_id).await?;
 
-        // Send hero update push so client refreshes the UI
         let hero_proto: sonettobuf::HeroInfo = updated_hero.into();
         let push = HeroUpdatePush {
             hero_updates: vec![hero_proto],
         };
 
+        let mut ctx_guard = ctx.lock().await;
         ctx_guard
             .send_push(CmdId::HeroHeroUpdatePushCmd, push)
             .await?;

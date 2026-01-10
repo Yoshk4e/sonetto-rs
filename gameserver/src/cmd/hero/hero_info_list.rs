@@ -1,7 +1,7 @@
 use crate::error::AppError;
 use crate::packet::ClientPacket;
 use crate::state::ConnectionContext;
-use database::db::game::heroes::*;
+use database::models::game::heros::UserHeroModel;
 use sonettobuf::{CmdId, HeroBirthdayInfo, HeroInfoListReply};
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -10,33 +10,26 @@ pub async fn on_hero_info_list(
     ctx: Arc<Mutex<ConnectionContext>>,
     req: ClientPacket,
 ) -> Result<(), AppError> {
-    let (_player_id, heroes_data, touch_count, all_skins, birthday_infos) = {
+    let (heroes_data, touch_count, all_skins, birthday_infos) = {
         let ctx_guard = ctx.lock().await;
         let player_id = ctx_guard.player_id.ok_or(AppError::NotLoggedIn)?;
+        let pool = ctx_guard.state.db.clone();
+        let hero = UserHeroModel::new(player_id, pool.clone());
 
-        let heroes = get_user_heroes(&ctx_guard.state.db, player_id)
-            .await
-            .map_err(|e| AppError::Custom(format!("Failed to load heroes: {}", e)))?;
+        let heroes = hero.get_all_heroes().await?;
 
-        let touch_count = get_touch_count(&ctx_guard.state.db, player_id)
-            .await
-            .map_err(|e| AppError::Custom(format!("Failed to load touch count: {}", e)))?
-            .unwrap_or(5);
+        let touch_count = hero.get_touch_count().await?;
 
-        let all_skins = get_all_hero_skins(&ctx_guard.state.db, player_id)
-            .await
-            .map_err(|e| AppError::Custom(format!("Failed to load hero skins: {}", e)))?;
+        let all_skins = hero.get_skins().await?;
 
-        let birthday_infos = get_birthday_info(&ctx_guard.state.db, player_id)
-            .await
-            .map_err(|e| AppError::Custom(format!("Failed to load birthday info: {}", e)))?;
+        let birthday_infos = hero.get_birthdays().await?;
 
-        (player_id, heroes, touch_count, all_skins, birthday_infos)
+        (heroes, touch_count, all_skins, birthday_infos)
     };
 
     let reply = HeroInfoListReply {
         heros: heroes_data.into_iter().map(Into::into).collect(),
-        touch_count_left: Some(touch_count),
+        touch_count_left: touch_count,
         all_hero_skin: all_skins,
         birthday_infos: birthday_infos
             .into_iter()

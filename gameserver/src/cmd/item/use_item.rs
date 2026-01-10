@@ -2,11 +2,11 @@ use super::process_item_use;
 use crate::error::AppError;
 use crate::packet::ClientPacket;
 use crate::state::{ConnectionContext, grant_dupe_rewards};
-use crate::utils::{
-    inventory::{add_currencies, add_items},
-    push,
+use crate::utils::push;
+
+use database::models::game::{
+    currencies::UserCurrencyModel, heros::UserHeroModel, items::UserItemModel,
 };
-use database::db::game::items;
 use prost::Message;
 use sonettobuf::{CmdId, UseItemReply, UseItemRequest};
 use std::sync::Arc;
@@ -22,6 +22,10 @@ pub async fn on_use_item(
     let user_id = ctx.lock().await.player_id.ok_or(AppError::NotLoggedIn)?;
     let pool = ctx.lock().await.state.db.clone();
 
+    let item = UserItemModel::new(user_id, pool.clone());
+    let currency = UserCurrencyModel::new(user_id, pool.clone());
+    let hero = UserHeroModel::new(user_id, pool.clone());
+
     let mut all_items = Vec::new();
     let mut all_currencies = Vec::new();
     let mut all_equips = Vec::new();
@@ -31,7 +35,7 @@ pub async fn on_use_item(
         let material_id = entry.material_id.ok_or(AppError::InvalidRequest)?;
         let quantity = entry.quantity.unwrap_or(1);
 
-        if !items::remove_item_quantity(&pool, user_id, material_id, quantity).await? {
+        if !item.remove_item_quantity(material_id, quantity).await? {
             return Err(AppError::InsufficientItems);
         }
         consumed_items.push(material_id);
@@ -57,15 +61,12 @@ pub async fn on_use_item(
 
                 let target_idx = request.target_id.unwrap() as usize;
                 if let Some(&hero_id) = hero_ids.get(target_idx) {
-                    let duplicate_count =
-                        if database::db::game::heroes::has_hero(&pool, user_id, hero_id).await? {
-                            database::db::game::heroes::add_hero_duplicate(&pool, user_id, hero_id)
-                                .await?
-                        } else {
-                            database::db::game::heroes::create_hero(&pool, user_id, hero_id)
-                                .await?;
-                            0
-                        };
+                    let duplicate_count = if hero.has_hero(hero_id).await? {
+                        hero.add_hero_duplicate(hero_id).await?
+                    } else {
+                        hero.create_hero(hero_id).await?;
+                        0
+                    };
                     grant_dupe_rewards(hero_id, duplicate_count).await?
                 } else {
                     tracing::warn!("Invalid hero index {} for item {}", target_idx, material_id);
@@ -76,13 +77,12 @@ pub async fn on_use_item(
             }
         } else if is_hero_item && request.target_id.is_some() {
             let hero_id = request.target_id.unwrap() as i32;
-            let duplicate_count =
-                if database::db::game::heroes::has_hero(&pool, user_id, hero_id).await? {
-                    database::db::game::heroes::add_hero_duplicate(&pool, user_id, hero_id).await?
-                } else {
-                    database::db::game::heroes::create_hero(&pool, user_id, hero_id).await?;
-                    0
-                };
+            let duplicate_count = if hero.has_hero(hero_id).await? {
+                hero.add_hero_duplicate(hero_id).await?
+            } else {
+                hero.create_hero(hero_id).await?;
+                0
+            };
             grant_dupe_rewards(hero_id, duplicate_count).await?
         } else {
             process_item_use(material_id, quantity, request.target_id)
@@ -135,18 +135,18 @@ pub async fn on_use_item(
     );
 
     let reward_items = if !final_items.is_empty() {
-        add_items(&pool, user_id, &final_items).await?
+        item.create_items(&final_items).await?
     } else {
         vec![]
     };
 
     let reward_currencies = if !all_currencies.is_empty() {
-        add_currencies(&pool, user_id, &all_currencies).await?
+        currency.create_currencies(&all_currencies).await?
     } else {
         vec![]
     };
 
-    let reward_equips = if !all_equips.is_empty() {
+    let reward_uids: Vec<i64> = if !all_equips.is_empty() {
         database::db::game::equipment::add_equipments(
             &pool,
             user_id,
@@ -157,7 +157,7 @@ pub async fn on_use_item(
         )
         .await?
     } else {
-        vec![]
+        Vec::new()
     };
 
     ctx.lock()
@@ -173,7 +173,7 @@ pub async fn on_use_item(
         )
         .await?;
 
-    consumed_items.extend(&reward_items);
+    consumed_items.extend(reward_items.iter().map(|&id| id as u32));
     if !consumed_items.is_empty() {
         push::send_item_change_push(ctx.clone(), user_id, consumed_items, vec![], vec![]).await?;
     }
@@ -182,8 +182,8 @@ pub async fn on_use_item(
         push::send_currency_change_push(ctx.clone(), user_id, reward_currencies).await?;
     }
 
-    if !reward_equips.is_empty() {
-        push::send_equip_update_push(ctx.clone(), user_id, reward_equips).await?;
+    if !reward_uids.is_empty() {
+        push::send_equip_update_push_by_uid(ctx.clone(), user_id, &reward_uids).await?;
     }
 
     if !material_changes.is_empty() {

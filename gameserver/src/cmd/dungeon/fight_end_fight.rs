@@ -1,4 +1,4 @@
-use crate::error::AppError;
+use crate::{error::AppError, state::send_end_fight_push};
 use crate::packet::ClientPacket;
 use crate::state::ConnectionContext;
 use prost::Message;
@@ -15,6 +15,33 @@ pub async fn on_fight_end_fight(
     let is_abort = request.is_abort.ok_or(AppError::InvalidRequest)?;
 
     tracing::info!("Fight ended with is_abort: {}", is_abort);
+
+    let (fight_group, is_replay, battle_id) = {
+        let ctx_guard = ctx.lock().await;
+        let battle = ctx_guard
+            .active_battle
+            .as_ref()
+            .ok_or(AppError::InvalidRequest)?;
+
+        (
+            battle.fight_group.clone(),
+            battle.is_replay.unwrap_or(false),
+            battle.fight_id.unwrap_or_default(),
+        )
+    };
+
+    if is_abort {
+        send_end_fight_push(
+            ctx.clone(),
+            battle_id,
+            -1, // abort
+            fight_group.clone().unwrap_or_default(),
+            vec![],
+            vec![],
+            !is_replay,
+        )
+        .await?;
+    }
 
     // Clear battle
     {

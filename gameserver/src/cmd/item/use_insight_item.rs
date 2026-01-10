@@ -1,6 +1,8 @@
-use crate::packet::ClientPacket;
-use crate::state::ConnectionContext;
-use crate::{cmd::item::apply_insight_item, error::AppError};
+use crate::{
+    cmd::item::apply_insight_item, error::AppError, packet::ClientPacket, state::ConnectionContext,
+    utils::push::send_item_change_push,
+};
+use database::models::game::heros::UserHeroModel;
 use prost::Message;
 use sonettobuf::{CmdId, UseInsightItemReply, UseInsightItemRequest};
 use std::sync::Arc;
@@ -24,16 +26,11 @@ pub async fn on_use_insight_item(
         )
     };
 
+    let hero = UserHeroModel::new(player_id, pool.clone());
+
     let item_id = apply_insight_item(&pool, player_id, uid, hero_id).await?;
 
-    crate::utils::push::send_item_change_push(
-        ctx.clone(),
-        player_id,
-        vec![],
-        vec![],
-        vec![item_id as u32],
-    )
-    .await?;
+    send_item_change_push(ctx.clone(), player_id, vec![], vec![], vec![item_id as u32]).await?;
 
     {
         let mut ctx_guard = ctx.lock().await;
@@ -50,9 +47,7 @@ pub async fn on_use_insight_item(
             .await?;
     }
 
-    if let Ok(hero) =
-        database::db::game::heroes::get_hero_by_hero_id(&pool, player_id, hero_id).await
-    {
+    if let Ok(hero) = hero.get_hero(hero_id).await {
         let mut ctx_guard = ctx.lock().await;
         ctx_guard
             .send_push(

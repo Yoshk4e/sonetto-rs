@@ -1,7 +1,9 @@
 use super::BattleContext;
 use super::entity_builder;
 use anyhow::Result;
-use database::db::game::heroes;
+
+use database::models::game::heros::{HeroModel, UserHeroModel};
+
 use sonettobuf::{Fight, FightTeam};
 use sqlx::SqlitePool;
 
@@ -46,13 +48,14 @@ async fn build_attacker_team(
 ) -> Result<FightTeam> {
     let mut entitys = Vec::new();
     let mut sub_entitys = Vec::new();
+    let hero = UserHeroModel::new(user_id, pool.clone());
 
     // Main heroes
     for (position, hero_uid) in fight_group.hero_list.iter().enumerate() {
         if *hero_uid == 0 {
             continue;
         }
-        let hero_data = heroes::get_hero_by_hero_uid(pool, user_id, *hero_uid as i32).await?;
+        let hero_data = hero.get_uid(*hero_uid as i32).await?;
         let entity =
             entity_builder::build_hero_entity(pool, &hero_data, (position + 1) as i32, 1).await;
         entitys.push(entity);
@@ -63,7 +66,7 @@ async fn build_attacker_team(
         if *hero_uid == 0 {
             continue;
         }
-        let hero_data = heroes::get_hero_by_hero_uid(pool, user_id, *hero_uid as i32).await?;
+        let hero_data = hero.get_uid(*hero_uid as i32).await?;
         let entity = entity_builder::build_hero_entity(pool, &hero_data, -1, 1).await;
         sub_entitys.push(entity);
     }

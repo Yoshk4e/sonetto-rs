@@ -1,7 +1,11 @@
 use crate::error::AppError;
 use crate::packet::ClientPacket;
 use crate::state::ConnectionContext;
-use database::db::game::heroes;
+
+use database::models::game::{
+    heros::{HeroModel, UserHeroModel},
+    items::UserItemModel,
+};
 use prost::Message;
 use sonettobuf::{CmdId, HeroUpdatePush, HeroUpgradeSkillReply, HeroUpgradeSkillRequest};
 use std::sync::Arc;
@@ -18,14 +22,21 @@ pub async fn on_hero_upgrade_skill(
 
     tracing::info!("Received HeroUpgradeSkillRequest: {:?}", request);
 
-    let (updated_hero, consumed_item_id, player_id) = {
+    let (player_id, pool) = {
         let ctx_guard = ctx.lock().await;
         let player_id = ctx_guard.player_id.ok_or(AppError::NotLoggedIn)?;
-        let pool = &ctx_guard.state.db;
+        let pool = ctx_guard.state.db.clone();
+        (player_id, pool)
+    };
 
-        let mut hero = heroes::get_hero_by_hero_id(pool, player_id, hero_id).await?;
+    let hero = UserHeroModel::new(player_id, pool.clone());
+    let item = UserItemModel::new(player_id, pool);
 
-        if skill_type == 3 && hero.record.ex_skill_level >= 5 {
+    let consumed_item_id = {
+        let hero_data = hero.get(hero_id).await?;
+
+        // Check current skill level
+        if skill_type == 3 && hero_data.record.ex_skill_level >= 5 {
             return Err(AppError::InvalidRequest);
         }
 
@@ -44,65 +55,57 @@ pub async fn on_hero_upgrade_skill(
             .and_then(|part| {
                 let segments: Vec<&str> = part.split('#').collect();
                 if segments.len() >= 3 && segments[0] == "1" {
-                    segments[1].parse::<u32>().ok()
+                    segments[1].parse::<i32>().ok()
                 } else {
                     None
                 }
             })
             .ok_or(AppError::InvalidRequest)?;
 
-        let has_item = database::db::game::items::get_item(pool, player_id, dupe_item_id)
-            .await?
-            .map(|i| i.quantity >= consume)
-            .unwrap_or(false);
-
-        if !has_item {
+        let success = item
+            .remove_item_quantity(dupe_item_id as u32, consume)
+            .await?;
+        if !success {
             return Err(AppError::InsufficientItems);
         }
 
-        database::db::game::items::remove_item_quantity(pool, player_id, dupe_item_id, consume)
-            .await?;
-
         if skill_type == 3 {
-            hero.record.ex_skill_level += consume;
-            hero.record.ex_skill_level = hero.record.ex_skill_level.min(5);
-
-            sqlx::query("UPDATE heroes SET ex_skill_level = ? WHERE user_id = ? AND hero_id = ?")
-                .bind(hero.record.ex_skill_level)
-                .bind(player_id)
-                .bind(hero_id)
-                .execute(pool)
-                .await?;
+            hero.upgrade_ex_skill(hero_id, consume).await?;
 
             tracing::info!(
-                "User {} upgraded ex_skill to level {} on hero {}",
+                "User {} upgraded ex_skill by {} levels on hero {}",
                 player_id,
-                hero.record.ex_skill_level,
+                consume,
                 hero_id
             );
         }
 
-        (hero, dupe_item_id, player_id)
+        dupe_item_id
     };
 
     crate::utils::push::send_item_change_push(
         ctx.clone(),
         player_id,
-        vec![consumed_item_id],
+        vec![consumed_item_id as u32],
         vec![],
         vec![],
     )
     .await?;
 
-    let data = HeroUpgradeSkillReply {};
-
     {
-        let mut ctx_guard = ctx.lock().await;
+        let ctx_guard = ctx.lock().await;
+        let pool = &ctx_guard.state.db;
+        let hero = UserHeroModel::new(player_id, pool.clone());
+        let updated_hero = hero.get(hero_id).await?;
+
+        drop(ctx_guard);
 
         let hero_proto: sonettobuf::HeroInfo = updated_hero.into();
         let push = HeroUpdatePush {
             hero_updates: vec![hero_proto],
         };
+
+        let mut ctx_guard = ctx.lock().await;
         ctx_guard
             .send_push(CmdId::HeroHeroUpdatePushCmd, push)
             .await?;
@@ -110,6 +113,7 @@ pub async fn on_hero_upgrade_skill(
         tracing::info!("Sent HeroUpdatePush for hero {} ex_skill upgrade", hero_id);
     }
 
+    let data = HeroUpgradeSkillReply {};
     {
         let mut ctx_guard = ctx.lock().await;
         ctx_guard

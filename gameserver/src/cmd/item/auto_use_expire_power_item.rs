@@ -1,7 +1,7 @@
-use crate::error::AppError;
 use crate::packet::ClientPacket;
 use crate::state::ConnectionContext;
 use crate::utils::push;
+use crate::{cmd::item::util::can_claim_month_card, error::AppError};
 use prost::Message;
 use sonettobuf::{AutoUseExpirePowerItemReply, AutoUseExpirePowerItemRequest, CmdId};
 use std::sync::Arc;
@@ -20,7 +20,7 @@ pub async fn on_auto_use_expire_power_item(
         let pool = &ctx_guard.state.db;
 
         let now = common::time::ServerTime::now_ms();
-        let now_seconds = (now / 1000) as i64;
+        let now_seconds = now / 1000;
 
         let expired_items: Vec<(i64, i32, i32, i64)> = sqlx::query_as(
             "SELECT uid, item_id, quantity, expire_time
@@ -113,12 +113,14 @@ pub async fn on_auto_use_expire_power_item(
         push::send_currency_change_push(ctx.clone(), user_id, vec![(4, 0)]).await?;
     }
 
+    can_claim_month_card(ctx.clone(), user_id).await?;
+
     let should_save = {
         let mut ctx_guard = ctx.lock().await;
         if let Some(ps) = ctx_guard.player_state.as_mut() {
             if !ps.initial_login_complete {
                 tracing::info!("Completing initial login for player {}", ps.player_id);
-                ps.mark_login_complete(common::time::ServerTime::now_ms());
+
                 ps.last_state_push_sent_timestamp = None;
                 ps.last_activity_push_sent_timestamp = None;
                 true
