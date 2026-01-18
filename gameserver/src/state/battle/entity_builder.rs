@@ -1,5 +1,5 @@
 use data::exceldb;
-use database::db::game::{equipment, heroes::HeroData};
+use database::{db::game::equipment, models::game::heros::HeroData};
 use sonettobuf::{EquipRecord, FightEntityInfo, HeroAttribute};
 use sqlx::SqlitePool;
 

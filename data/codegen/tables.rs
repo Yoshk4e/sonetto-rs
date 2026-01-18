@@ -40,4 +40,7 @@ pub const FILTER_TABLES: &[&str] = &[
     "character_rank_replace",
     "store_charge_goods",
     "store_charge_optional",
+    "month_card",
+    "equip_break_cost",
+    "equip_strengthen_cost",
 ];

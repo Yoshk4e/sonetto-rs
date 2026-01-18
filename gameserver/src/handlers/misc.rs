@@ -1,9 +1,9 @@
 use crate::error::AppError;
 use crate::network::packet::ClientPacket;
 use crate::state::ConnectionContext;
-use database::db::game::{
-    bgm::{load_user_bgm, set_active_bgm, set_bgm_favorite},
-    heroes,
+use database::{
+    db::game::bgm::{load_user_bgm, set_active_bgm, set_bgm_favorite},
+    models::game::heros::{HeroModel, UserHeroModel},
 };
 use prost::Message;
 use sonettobuf::{
@@ -104,11 +104,11 @@ pub async fn on_use_skin(
         let player_id = conn.player_id.ok_or(AppError::NotLoggedIn)?;
         let pool = &conn.state.db;
 
-        // Get hero
-        let mut hero = heroes::get_hero_by_hero_id(pool, player_id, hero_id).await?;
+        let hero = UserHeroModel::new(player_id, pool.clone());
+        let hero_data = hero.get(hero_id).await?;
+        let hero_info: sonettobuf::HeroInfo = hero_data.into();
 
-        // Update skin
-        hero.update_skin(pool, skin_id).await?;
+        hero.update_skin(hero_id, skin_id).await?;
 
         tracing::info!(
             "User {} equipped skin {} on hero {}",
@@ -116,7 +116,7 @@ pub async fn on_use_skin(
             skin_id,
             hero_id
         );
-        hero
+        hero_info
     };
 
     let data = UseSkinReply {

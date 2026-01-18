@@ -1,5 +1,5 @@
 use crate::{
-    db::game::heroes,
+    models::game::heros::{HeroModel, UserHeroModel},
     models::game::dungeons::{
         DungeonLastHeroGroup, RewardPointInfo, UserChapterTypeNum, UserDungeon,
     },
@@ -220,6 +220,8 @@ pub async fn load_dungeon_record(
     user_id: i64,
     episode_id: i32,
 ) -> Result<Option<sonettobuf::FightGroupRecord>> {
+    let hero = UserHeroModel::new(user_id, pool.clone());
+
     #[derive(sqlx::FromRow)]
     struct RecordRow {
         record_round: i32,
@@ -260,7 +262,7 @@ pub async fn load_dungeon_record(
     // Build hero records
     let mut hero_list = Vec::new();
     for hero_uid in hero_uids {
-        if let Ok(hero_data) = heroes::get_hero_by_hero_uid(pool, user_id, hero_uid as i32).await {
+        if let Ok(hero_data) = hero.get_uid(hero_uid as i32).await {
             hero_list.push(sonettobuf::FightHeroRecord {
                 hero_uid: Some(hero_data.record.uid),
                 hero_id: Some(hero_data.record.hero_id),
@@ -272,7 +274,7 @@ pub async fn load_dungeon_record(
 
     let mut sub_hero_list = Vec::new();
     for hero_uid in sub_hero_uids {
-        if let Ok(hero_data) = heroes::get_hero_by_hero_uid(pool, user_id, hero_uid as i32).await {
+        if let Ok(hero_data) = hero.get_uid(hero_uid as i32).await {
             sub_hero_list.push(sonettobuf::FightHeroRecord {
                 hero_uid: Some(hero_data.record.uid),
                 hero_id: Some(hero_data.record.hero_id),

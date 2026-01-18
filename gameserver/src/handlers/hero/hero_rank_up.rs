@@ -2,7 +2,10 @@ use crate::error::AppError;
 use crate::network::packet::ClientPacket;
 use crate::state::ConnectionContext;
 use crate::util::push;
-use database::db::game::heroes;
+use database::{
+    models::game::heros::{HeroModel, UserHeroModel},
+    models::game::{currencies::UserCurrencyModel, items::UserItemModel},
+};
 use prost::Message;
 use sonettobuf::{CmdId, HeroRankUpReply, HeroRankUpRequest, HeroUpdatePush};
 use std::sync::Arc;
@@ -17,13 +20,25 @@ pub async fn on_hero_rank_up(
 
     let hero_id = request.hero_id.ok_or(AppError::InvalidRequest)?;
 
-    let (user_id, new_rank, consumed_items, consumed_currencies) = {
+    let (player_id, pool) = {
         let conn = ctx.lock().await;
         let player_id = conn.player_id.ok_or(AppError::NotLoggedIn)?;
         let pool = &conn.state.db;
 
-        let hero = heroes::get_hero_by_hero_id(pool, player_id, hero_id).await?;
-        let current_rank = hero.record.rank;
+        (player_id, pool.clone())
+    };
+
+    let hero = UserHeroModel::new(player_id, pool.clone());
+    let item = UserItemModel::new(player_id, pool.clone());
+    let currency = UserCurrencyModel::new(player_id, pool.clone());
+
+    let (user_id, new_rank, consumed_items, consumed_currencies) = {
+        let conn = ctx.lock().await;
+
+        let hero_data = hero.get(hero_id).await?;
+        let hero_info: sonettobuf::HeroInfo = hero_data.clone().into();
+
+        let current_rank = hero_data.record.rank;
         let target_rank = current_rank + 1;
 
         let game_data = data::exceldb::get();
@@ -51,11 +66,11 @@ pub async fn on_hero_rank_up(
                 drop(conn);
 
                 let mut conn = ctx.lock().await;
-                let hero_proto: sonettobuf::HeroInfo = hero.into();
+
                 conn.notify(
                     CmdId::HeroHeroUpdatePushCmd,
                     HeroUpdatePush {
-                        hero_updates: vec![hero_proto],
+                        hero_updates: vec![hero_info],
                     },
                 )
                 .await?;
@@ -72,11 +87,11 @@ pub async fn on_hero_rank_up(
                 let required_level: i32 =
                     req_parts[1].parse().map_err(|_| AppError::InvalidRequest)?;
 
-                if hero.record.level != required_level {
+                if hero_data.record.level != required_level {
                     tracing::info!(
                         "Hero {} level {} does not match requirement {} for rank {} (retry)",
                         hero_id,
-                        hero.record.level,
+                        hero_data.record.level,
                         required_level,
                         target_rank
                     );
@@ -89,11 +104,14 @@ pub async fn on_hero_rank_up(
                     drop(conn);
 
                     let mut conn = ctx.lock().await;
-                    let hero_proto: sonettobuf::HeroInfo = hero.into();
+
+                    let updated_hero_data = hero.get(hero_id).await?;
+                    let updated_hero_info: sonettobuf::HeroInfo = updated_hero_data.into();
+
                     conn.notify(
                         CmdId::HeroHeroUpdatePushCmd,
                         HeroUpdatePush {
-                            hero_updates: vec![hero_proto],
+                            hero_updates: vec![updated_hero_info],
                         },
                     )
                     .await?;
@@ -134,7 +152,8 @@ pub async fn on_hero_rank_up(
         }
 
         for (item_id, amount) in &cost_items {
-            let current = database::db::game::items::get_item(pool, player_id, *item_id)
+            let current = item
+                .get_item(*item_id)
                 .await?
                 .map(|i| i.quantity)
                 .unwrap_or(0);
@@ -149,7 +168,8 @@ pub async fn on_hero_rank_up(
                 );
 
                 drop(conn);
-                push::send_item_change_push(ctx.clone(), player_id, vec![*item_id]).await?;
+                push::send_item_change_push(ctx.clone(), player_id, vec![*item_id], vec![], vec![])
+                    .await?;
 
                 let mut conn = ctx.lock().await;
                 conn.send_reply(
@@ -168,11 +188,11 @@ pub async fn on_hero_rank_up(
         }
 
         for (currency_id, amount) in &cost_currencies {
-            let current =
-                database::db::game::currencies::get_currency(pool, player_id, *currency_id)
-                    .await?
-                    .map(|c| c.quantity)
-                    .unwrap_or(0);
+            let current = currency
+                .get_currency(*currency_id)
+                .await?
+                .map(|c| c.quantity)
+                .unwrap_or(0);
 
             if current < *amount {
                 tracing::info!(
@@ -204,21 +224,14 @@ pub async fn on_hero_rank_up(
         }
 
         for (item_id, amount) in &cost_items {
-            database::db::game::items::remove_item_quantity(pool, player_id, *item_id, *amount)
-                .await?;
+            item.remove_item_quantity(*item_id, *amount).await?;
         }
 
         for (currency_id, amount) in &cost_currencies {
-            database::db::game::currencies::remove_currency(pool, player_id, *currency_id, *amount)
-                .await?;
+            currency.remove_currency(*currency_id, *amount).await?;
         }
 
-        sqlx::query("UPDATE heroes SET rank = ?, level = 1 WHERE uid = ? AND user_id = ?")
-            .bind(target_rank)
-            .bind(hero.record.uid)
-            .bind(player_id)
-            .execute(pool)
-            .await?;
+        hero.rank_up(hero_id, target_rank).await?;
 
         tracing::info!(
             "User {} ranked up hero {} from rank {} to {} (level reset to 1)",
@@ -228,53 +241,7 @@ pub async fn on_hero_rank_up(
             target_rank
         );
 
-        if target_rank == 3 {
-            let insight_skin = game_data
-                .skin
-                .iter()
-                .find(|s| s.character_id == hero_id && s.id % 100 == 2 && s.gain_approach == 1);
-
-            if let Some(skin) = insight_skin {
-                let has_skin: Option<i32> = sqlx::query_scalar(
-                    "SELECT 1 FROM hero_all_skins WHERE user_id = ? AND skin_id = ?",
-                )
-                .bind(player_id)
-                .bind(skin.id)
-                .fetch_optional(pool)
-                .await?;
-
-                if has_skin.is_none() {
-                    sqlx::query("INSERT INTO hero_all_skins (user_id, skin_id) VALUES (?, ?)")
-                        .bind(player_id)
-                        .bind(skin.id)
-                        .execute(pool)
-                        .await?;
-
-                    sqlx::query(
-                        "INSERT INTO hero_skins (hero_uid, skin, expire_sec) VALUES (?, ?, ?)",
-                    )
-                    .bind(hero.record.uid)
-                    .bind(skin.id)
-                    .bind(0)
-                    .execute(pool)
-                    .await?;
-
-                    sqlx::query("UPDATE heroes SET skin = ? WHERE uid = ? AND user_id = ?")
-                        .bind(skin.id)
-                        .bind(hero.record.uid)
-                        .bind(player_id)
-                        .execute(pool)
-                        .await?;
-
-                    tracing::info!(
-                        "User {} unlocked and equipped Insight II skin {} for hero {}",
-                        player_id,
-                        skin.id,
-                        hero_id
-                    );
-                }
-            }
-        }
+        hero.unlock_insight_skin(hero_id, target_rank).await?;
 
         (player_id, target_rank, cost_items, cost_currencies)
     };
@@ -284,6 +251,8 @@ pub async fn on_hero_rank_up(
             ctx.clone(),
             user_id,
             consumed_items.iter().map(|(id, _)| *id).collect(),
+            vec![],
+            vec![],
         )
         .await?;
     }
@@ -297,27 +266,30 @@ pub async fn on_hero_rank_up(
         .await?;
     }
 
-    let mut conn = ctx.lock().await;
-    let updated_hero = heroes::get_hero_by_hero_id(&conn.state.db, user_id, hero_id).await?;
+    {
+        let mut conn = ctx.lock().await;
+        let updated_hero_data = hero.get(hero_id).await?;
+        let updated_hero_info: sonettobuf::HeroInfo = updated_hero_data.into();
 
-    conn.notify(
-        CmdId::HeroHeroUpdatePushCmd,
-        HeroUpdatePush {
-            hero_updates: vec![updated_hero.into()],
-        },
-    )
-    .await?;
+        conn.notify(
+            CmdId::HeroHeroUpdatePushCmd,
+            HeroUpdatePush {
+                hero_updates: vec![updated_hero_info.into()],
+            },
+        )
+        .await?;
 
-    conn.send_reply(
-        CmdId::HeroRankUpCmd,
-        HeroRankUpReply {
-            hero_id: Some(hero_id),
-            new_rank: Some(new_rank),
-        },
-        0,
-        req.up_tag,
-    )
-    .await?;
+        conn.send_reply(
+            CmdId::HeroRankUpCmd,
+            HeroRankUpReply {
+                hero_id: Some(hero_id),
+                new_rank: Some(new_rank),
+            },
+            0,
+            req.up_tag,
+        )
+        .await?;
+    }
 
     tracing::info!("Hero {} ranked up to {}", hero_id, new_rank);
 

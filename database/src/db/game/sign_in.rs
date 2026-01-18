@@ -4,6 +4,57 @@ use chrono::Datelike;
 use common::time::ServerTime;
 use sqlx::SqlitePool;
 
+/// Record sign-in for today
+async fn record_sign_in_day(pool: &SqlitePool, user_id: i64, now: i64) -> Result<bool> {
+    let server_day = ServerTime::server_day(now);
+    let day_of_month = ServerTime::day_of_month(now) as i32;
+
+    let already_signed: Option<i32> =
+        sqlx::query_scalar("SELECT 1 FROM user_sign_in_days WHERE user_id = ? AND server_day = ?")
+            .bind(user_id)
+            .bind(server_day)
+            .fetch_optional(pool)
+            .await?;
+
+    if already_signed.is_some() {
+        return Ok(false);
+    }
+
+    sqlx::query(
+        "INSERT INTO user_sign_in_days (user_id, server_day, day_of_month)
+         VALUES (?, ?, ?)
+         ON CONFLICT(user_id, server_day) DO NOTHING",
+    )
+    .bind(user_id)
+    .bind(server_day)
+    .bind(day_of_month)
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO user_sign_in_info
+            (user_id, addup_sign_in_day, open_function_time, reward_mark)
+        VALUES (?, 1, ?, 0)
+        ON CONFLICT(user_id)
+        DO UPDATE SET addup_sign_in_day = addup_sign_in_day + 1
+        "#,
+    )
+    .bind(user_id)
+    .bind(now / 1000)
+    .execute(pool)
+    .await?;
+
+    tracing::info!(
+        "Sign-in recorded user_id={} day={} server_day={}",
+        user_id,
+        day_of_month,
+        server_day
+    );
+
+    Ok(true)
+}
+
 /// Process daily login - returns (is_new_day, is_new_week, is_new_month)
 pub async fn process_daily_login(pool: &SqlitePool, user_id: i64) -> Result<(bool, bool, bool)> {
     let now = ServerTime::now_ms();
@@ -27,7 +78,7 @@ pub async fn process_daily_login(pool: &SqlitePool, user_id: i64) -> Result<(boo
 
     let is_new_day = match last_sign_in_time {
         Some(last) if last > 0 => ServerTime::is_new_day(last, now),
-        _ => true, // first login ever
+        _ => true,
     };
 
     let is_new_week = match last_sign_in_time {
@@ -50,92 +101,32 @@ pub async fn process_daily_login(pool: &SqlitePool, user_id: i64) -> Result<(boo
             .bind(user_id)
             .execute(pool)
             .await?;
+
+        sqlx::query("DELETE FROM user_sign_in_addup_bonus WHERE user_id = ?")
+            .bind(user_id)
+            .execute(pool)
+            .await?;
+
+        reset_monthly_counters(pool, user_id).await?;
+    }
+
+    if is_new_week {
+        reset_weekly_counters(pool, user_id).await?;
     }
 
     if is_new_day {
-        let server_day = ServerTime::server_day(now);
-        let day_of_month = ServerTime::server_date().day() as i32;
+        record_sign_in_day(pool, user_id, now).await?;
 
-        // Insert daily sign-in (must affect 1 row on first login of the day)
-        let rows = sqlx::query(
-            r#"
-            INSERT INTO user_sign_in_days (user_id, server_day, day_of_month)
-            VALUES (?, ?, ?)
-            ON CONFLICT(user_id, server_day) DO NOTHING
-            "#,
-        )
-        .bind(user_id)
-        .bind(server_day)
-        .bind(day_of_month)
-        .execute(pool)
-        .await?
-        .rows_affected();
-
-        if rows == 0 {
-            tracing::info!(
-                "user_sign_in_days already exists for user_id={} server_day={}",
-                user_id,
-                server_day
-            );
-        }
-
-        sqlx::query(
-            r#"
-            INSERT INTO user_sign_in_info
-                (user_id, addup_sign_in_day, open_function_time, reward_mark)
-            VALUES (?, 1, ?, 0)
-            ON CONFLICT(user_id)
-            DO UPDATE SET addup_sign_in_day = addup_sign_in_day + 1
-            "#,
-        )
-        .bind(user_id)
-        .bind(now / 1000)
-        .execute(pool)
-        .await?;
-
-        let has_active_card: bool = sqlx::query_scalar(
-            r#"
-            SELECT EXISTS(
-                SELECT 1 FROM user_month_card_history
-                WHERE user_id = ?
-                  AND start_time <= ?
-                  AND end_time > ?
-            )
-            "#,
-        )
-        .bind(user_id)
-        .bind(now)
-        .bind(now)
-        .fetch_one(pool)
-        .await?;
-
-        if has_active_card {
-            sqlx::query(
-                r#"
-                INSERT INTO user_month_card_days
-                    (user_id, server_day, day_of_month)
-                VALUES (?, ?, ?)
-                ON CONFLICT(user_id, server_day) DO NOTHING
-                "#,
-            )
-            .bind(user_id)
-            .bind(server_day)
-            .bind(day_of_month)
-            .execute(pool)
-            .await?;
-        }
-
-        tracing::info!(
-            "daily login recorded user_id={} day={} server_day={}",
-            user_id,
-            day_of_month,
-            server_day
-        );
+        reset_daily_counters(pool, user_id).await?;
     }
 
     let ps_rows = sqlx::query(
         "UPDATE player_state
-         SET last_sign_in_time = ?, updated_at = ?
+         SET last_sign_in_time = ?,
+            updated_at = ?,
+            initial_login_complete = 0,
+            month_card_claimed = 0,
+            last_month_card_claim_timestamp = NULL
          WHERE player_id = ?",
     )
     .bind(now)
@@ -152,89 +143,16 @@ pub async fn process_daily_login(pool: &SqlitePool, user_id: i64) -> Result<(boo
     Ok((is_new_day, is_new_week, is_new_month))
 }
 
-pub async fn process_manual_sign_in(pool: &SqlitePool, user_id: i64) -> Result<()> {
+pub async fn process_manual_sign_in(pool: &SqlitePool, user_id: i64) -> Result<bool> {
     let now = ServerTime::now_ms();
 
-    // Canonical server-day (monotonic, offset-aware)
-    let server_day = ServerTime::server_day(now);
+    let recorded = record_sign_in_day(pool, user_id, now).await?;
 
-    // Also extract calendar fields if UI needs them
-    let server_date = ServerTime::server_date();
-    let day_of_month = server_date.day() as i32;
-
-    // Check if already signed in today
-    let already_signed: Option<i32> =
-        sqlx::query_scalar("SELECT 1 FROM user_sign_in_days WHERE user_id = ? AND server_day = ?")
-            .bind(user_id)
-            .bind(server_day)
-            .fetch_optional(pool)
-            .await?;
-
-    if already_signed.is_some() {
+    if !recorded {
         tracing::info!("User {} already signed in today", user_id);
-        return Ok(());
     }
 
-    // Insert sign-in record (collision-safe)
-    sqlx::query(
-        "INSERT INTO user_sign_in_days (user_id, server_day, day_of_month)
-         VALUES (?, ?, ?)
-         ON CONFLICT DO NOTHING",
-    )
-    .bind(user_id)
-    .bind(server_day)
-    .bind(day_of_month)
-    .execute(pool)
-    .await?;
-
-    //Increment accumulated sign-in count
-    sqlx::query(
-        r#"
-        INSERT INTO user_sign_in_info
-            (user_id, addup_sign_in_day, open_function_time, reward_mark)
-        VALUES (?, 1, ?, 0)
-        ON CONFLICT(user_id)
-        DO UPDATE SET addup_sign_in_day = addup_sign_in_day + 1
-        "#,
-    )
-    .bind(user_id)
-    .bind(common::time::ServerTime::now_ms() / 1000)
-    .execute(pool)
-    .await?;
-
-    //Check month card validity (timestamps stay UTC ms)
-    let has_active_card: Option<i32> = sqlx::query_scalar(
-        "SELECT 1 FROM user_month_card_history
-         WHERE user_id = ?
-           AND start_time <= ?
-           AND end_time > ?",
-    )
-    .bind(user_id)
-    .bind(now as i64)
-    .bind(now as i64)
-    .fetch_optional(pool)
-    .await?;
-
-    if has_active_card.is_some() {
-        sqlx::query(
-            "INSERT INTO user_month_card_days (user_id, server_day)
-             VALUES (?, ?)
-             ON CONFLICT DO NOTHING",
-        )
-        .bind(user_id)
-        .bind(server_day)
-        .execute(pool)
-        .await?;
-    }
-
-    tracing::info!(
-        "Manual sign-in recorded for user {} (server_day={}, day={})",
-        user_id,
-        server_day,
-        day_of_month
-    );
-
-    Ok(())
+    Ok(recorded)
 }
 
 /// Reset daily counters (call this for any daily-reset systems)
@@ -272,11 +190,149 @@ pub async fn reset_daily_counters(pool: &SqlitePool, user_id: i64) -> Result<()>
 }
 
 /// Reset weekly counters (call this for any weekly-reset systems)
-pub async fn reset_weekly_counters(_pool: &SqlitePool, user_id: i64) -> Result<()> {
-    // Add weekly reset logic here
-    // Example: Reset tower attempts, weekly missions, etc.
+pub async fn reset_weekly_counters(pool: &SqlitePool, user_id: i64) -> Result<()> {
+    let game_data = data::exceldb::get();
 
-    tracing::info!("Reset weekly counters for user {}", user_id);
+    let weekly_store_goods: Vec<i32> = game_data
+        .store_goods
+        .iter()
+        .filter(|g| g.refresh_time == 2)
+        .map(|g| g.id)
+        .collect();
+
+    if !weekly_store_goods.is_empty() {
+        for goods_id in &weekly_store_goods {
+            sqlx::query(
+                "UPDATE user_store_goods
+                 SET buy_count = 0
+                 WHERE user_id = ? AND goods_id = ?",
+            )
+            .bind(user_id)
+            .bind(goods_id)
+            .execute(pool)
+            .await?;
+        }
+
+        tracing::info!(
+            "Reset weekly store_goods for user {}: {} items reset",
+            user_id,
+            weekly_store_goods.len()
+        );
+    }
+
+    let weekly_charge_goods: Vec<i32> = game_data
+        .store_charge_goods
+        .iter()
+        .filter(|g| g.order == 40)
+        .map(|g| g.id)
+        .collect();
+
+    if !weekly_charge_goods.is_empty() {
+        for goods_id in &weekly_charge_goods {
+            sqlx::query(
+                "UPDATE user_charge_info
+                 SET buy_count = 0
+                 WHERE user_id = ? AND charge_id = ?",
+            )
+            .bind(user_id)
+            .bind(goods_id)
+            .execute(pool)
+            .await?;
+        }
+
+        tracing::info!(
+            "Reset weekly store_charge_goods for user {}: {} items reset",
+            user_id,
+            weekly_charge_goods.len()
+        );
+    }
+
+    if weekly_store_goods.is_empty() && weekly_charge_goods.is_empty() {
+        tracing::info!(
+            "Reset weekly counters for user {} (no weekly items)",
+            user_id
+        );
+    }
+
+    Ok(())
+}
+
+/// Reset monthly counters
+pub async fn reset_monthly_counters(pool: &SqlitePool, user_id: i64) -> Result<()> {
+    let game_data = data::exceldb::get();
+
+    sqlx::query(
+        "UPDATE user_sign_in_info
+             SET addup_sign_in_day = 0
+             WHERE user_id = ?",
+    )
+    .bind(user_id)
+    .execute(pool)
+    .await?;
+
+    let monthly_store_goods: Vec<i32> = game_data
+        .store_goods
+        .iter()
+        .filter(|g| g.refresh_time == 3)
+        .map(|g| g.id)
+        .collect();
+
+    if !monthly_store_goods.is_empty() {
+        for goods_id in &monthly_store_goods {
+            sqlx::query(
+                "UPDATE user_store_goods
+                 SET buy_count = 0
+                 WHERE user_id = ? AND goods_id = ?",
+            )
+            .bind(user_id)
+            .bind(goods_id)
+            .execute(pool)
+            .await?;
+        }
+
+        tracing::info!(
+            "Reset monthly store_goods for user {}: {} items reset",
+            user_id,
+            monthly_store_goods.len()
+        );
+    }
+
+    let monthly_charge_goods: Vec<i32> = game_data
+        .store_charge_goods
+        .iter()
+        .filter(|g| {
+            g.belong_store_id == 614 && matches!(g.order, 120 | 311 | 312 | 350 | 500 | 600)
+        })
+        .map(|g| g.id)
+        .collect();
+
+    if !monthly_charge_goods.is_empty() {
+        for goods_id in &monthly_charge_goods {
+            sqlx::query(
+                "UPDATE user_charge_info
+                 SET buy_count = 0
+                 WHERE user_id = ? AND charge_id = ?",
+            )
+            .bind(user_id)
+            .bind(goods_id)
+            .execute(pool)
+            .await?;
+        }
+
+        tracing::info!(
+            "Reset monthly store_charge_goods for user {}: {} items reset",
+            user_id,
+            monthly_charge_goods.len()
+        );
+    }
+
+    if monthly_store_goods.is_empty() && monthly_charge_goods.is_empty() {
+        tracing::info!(
+            "Reset monthly counters for user {} (no monthly items)",
+            user_id
+        );
+    }
+
     Ok(())
 }
 
@@ -384,7 +440,6 @@ pub async fn add_sign_in_day(
     day_of_month: i32,
     now_ms: i64,
 ) -> Result<()> {
-    //Insert daily sign-in (collision-safe)
     sqlx::query(
         r#"
         INSERT INTO user_sign_in_days (user_id, server_day, day_of_month)
@@ -400,7 +455,6 @@ pub async fn add_sign_in_day(
 
     let now_sec = (now_ms / 1000) as i32;
 
-    // Increment accumulated sign-in count
     sqlx::query(
         r#"
         INSERT INTO user_sign_in_info

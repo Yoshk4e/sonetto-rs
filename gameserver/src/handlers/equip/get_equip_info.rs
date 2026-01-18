@@ -1,7 +1,7 @@
 use crate::error::AppError;
 use crate::network::packet::ClientPacket;
 use crate::state::ConnectionContext;
-use database::db::game::equipment;
+use database::models::game::equipment::{EquipmentModel, UserEquipmentModel};
 use sonettobuf::{CmdId, GetEquipInfoReply};
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -13,8 +13,11 @@ pub async fn on_get_equip_info(
     let equipment_list = {
         let conn = ctx.lock().await;
         let player_id = conn.player_id.ok_or(AppError::NotLoggedIn)?;
+        let pool = conn.state.db.clone();
 
-        equipment::get_user_equipment(&conn.state.db, player_id).await?
+        let equip = UserEquipmentModel::new(player_id, pool.clone());
+
+        equip.get_all().await?
     };
 
     let reply = GetEquipInfoReply {

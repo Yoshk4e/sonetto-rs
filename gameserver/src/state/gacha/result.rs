@@ -1,6 +1,7 @@
 #[derive(Debug)]
 pub struct GachaPool {
     pub six_up: Vec<i32>,
+    pub six_up_weighted: Vec<(i32, u32)>, // ONLY for Yearning
     pub six_normal: Vec<i32>,
 
     pub five_up: Vec<i32>,

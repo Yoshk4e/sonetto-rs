@@ -28,7 +28,9 @@ impl CharacterCosumeTable {
             serde_json::from_value(value)?
         };
 
-        Ok(Self { records })
+        Ok(Self {
+            records,
+        })
     }
 
     #[inline]
@@ -41,10 +43,6 @@ impl CharacterCosumeTable {
         self.records.iter()
     }
 
-    pub fn len(&self) -> usize {
-        self.records.len()
-    }
-    pub fn is_empty(&self) -> bool {
-        self.records.is_empty()
-    }
+    pub fn len(&self) -> usize { self.records.len() }
+    pub fn is_empty(&self) -> bool { self.records.is_empty() }
 }

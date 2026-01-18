@@ -56,7 +56,7 @@ pub async fn on_login(
             let ctx = ctx.lock().await;
             ctx.state.db.clone()
         };
-        let (is_new_day, is_new_week, _is_new_month) =
+        let (is_new_day, is_new_week, is_new_month) =
             sign_in::process_daily_login(&db, user_id).await?;
         if is_new_day {
             sign_in::reset_daily_counters(&db, user_id).await?;
@@ -64,23 +64,37 @@ pub async fn on_login(
         if is_new_week {
             sign_in::reset_weekly_counters(&db, user_id).await?;
         }
+        if is_new_month {
+            sign_in::reset_monthly_counters(&db, user_id).await?;
+        }
     }
 
     {
         let mut conn = ctx.lock().await;
         let now = ServerTime::now_ms();
+        let today = ServerTime::server_day(now);
+
         conn.update_and_save_player_state(|state| {
-            state.last_sign_in_time = Some(now);
-            state.last_sign_in_day = ServerTime::server_day(now);
+            state.last_login_timestamp = Some(now);
+
             if state.is_new_server_day(now) {
+                state.initial_login_complete = false;
+                state.last_sign_in_day = today;
                 state.last_daily_reset_time = Some(now);
+                state.month_card_claimed = false;
+                state.last_month_card_claim_timestamp = None;
             }
+
             if state.is_new_week(now) {
                 state.last_weekly_reset_time = Some(now);
             }
+
             if state.is_new_month(now) {
                 state.last_monthly_reset_time = Some(now);
             }
+
+            state.mark_login_complete(now);
+            state.last_sign_in_time = Some(now);
         })
         .await?;
     }

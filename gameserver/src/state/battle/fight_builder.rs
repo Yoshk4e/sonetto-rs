@@ -1,11 +1,13 @@
 use super::BattleContext;
 use super::entity_builder;
 use anyhow::Result;
-use database::db::game::heroes;
-use sonettobuf::{Fight, FightTeam};
+
+use database::models::game::heros::{HeroModel, UserHeroModel};
+
 use once_cell::sync::Lazy;
-use std::collections::HashMap;
+use sonettobuf::{Fight, FightTeam};
 use sqlx::SqlitePool;
+use std::collections::HashMap;
 
 pub async fn build_fight(
     pool: &SqlitePool,
@@ -63,22 +65,16 @@ async fn build_attacker_team(
 ) -> Result<FightTeam> {
     let mut entitys = Vec::new();
     let mut sub_entitys = Vec::new();
+    let hero = UserHeroModel::new(user_id, pool.clone());
 
     // Main heroes
     for (position, hero_uid) in fight_group.hero_list.iter().enumerate() {
         if *hero_uid == 0 {
             continue;
         }
-
-        let entity = if *hero_uid < 0 {
-            // Trial hero - build from static data
-            build_trial_hero_entity(*hero_uid, (position + 1) as i32, 1)?
-        } else {
-            // Regular hero - load from database
-            let hero_data = heroes::get_hero_by_hero_uid(pool, user_id, *hero_uid as i32).await?;
-            entity_builder::build_hero_entity(pool, &hero_data, (position + 1) as i32, 1).await
-        };
-
+        let hero_data = hero.get_uid(*hero_uid as i32).await?;
+        let entity =
+            entity_builder::build_hero_entity(pool, &hero_data, (position + 1) as i32, 1).await;
         entitys.push(entity);
     }
 
@@ -87,16 +83,8 @@ async fn build_attacker_team(
         if *hero_uid == 0 {
             continue;
         }
-
-        let entity = if *hero_uid < 0 {
-            // Trial hero
-            build_trial_hero_entity(*hero_uid, -1, 1)?
-        } else {
-            // Regular hero
-            let hero_data = heroes::get_hero_by_hero_uid(pool, user_id, *hero_uid as i32).await?;
-            entity_builder::build_hero_entity(pool, &hero_data, -1, 1).await
-        };
-
+        let hero_data = hero.get_uid(*hero_uid as i32).await?;
+        let entity = entity_builder::build_hero_entity(pool, &hero_data, -1, 1).await;
         sub_entitys.push(entity);
     }
 
@@ -127,7 +115,9 @@ fn build_trial_hero_entity(
         .get(&hero_uid)
         .ok_or_else(|| anyhow::anyhow!("Unknown trial hero UID: {}", hero_uid))?;
 
-    let trial_data = game_data.hero_trial.get(*trial_id)
+    let trial_data = game_data
+        .hero_trial
+        .get(*trial_id)
         .ok_or_else(|| anyhow::anyhow!("Trial data not found for ID {}", trial_id))?;
 
     tracing::info!(
@@ -143,7 +133,9 @@ fn build_trial_hero_entity(
         .character
         .iter()
         .find(|h| h.id == trial_data.hero_id)
-        .ok_or_else(|| anyhow::anyhow!("Hero config not found for hero_id {}", trial_data.hero_id))?;
+        .ok_or_else(|| {
+            anyhow::anyhow!("Hero config not found for hero_id {}", trial_data.hero_id)
+        })?;
 
     // Try to find exact level first
     let char_level_opt = game_data
@@ -206,7 +198,7 @@ fn build_trial_hero_entity(
         skin: Some(trial_data.skin),
         position: Some(position),
         entity_type: Some(1), // 1 = Hero
-        user_id: Some(0), // Trial heroes have no owner
+        user_id: Some(0),     // Trial heroes have no owner
         ex_point: Some(0),
         level: Some(trial_data.level),
         current_hp: Some(hp),
@@ -268,7 +260,6 @@ fn build_trial_hero_entity(
         custom_unit_id: Some(0),
     })
 }
-
 
 // Helper function to parse skill groups
 fn parse_skill_group(skill_str: &str, target_group: i32) -> Vec<i32> {

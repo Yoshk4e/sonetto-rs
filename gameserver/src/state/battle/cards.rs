@@ -1,12 +1,11 @@
-use rand::{seq::SliceRandom, thread_rng};
-use sqlx::SqlitePool;
-
 use crate::error::AppError;
 use data::exceldb;
-use database::db::game::heroes;
-use std::collections::HashMap;
+use database::models::game::heros::{HeroModel, UserHeroModel};
 use once_cell::sync::Lazy;
+use rand::{seq::SliceRandom, thread_rng};
 use sonettobuf::{CardInfo, CardInfoPush, FightGroup};
+use sqlx::SqlitePool;
+use std::collections::HashMap;
 
 // Core deck generation
 pub async fn generate_card_deck(
@@ -94,6 +93,8 @@ async fn build_candidate_pool(
     let mut pool_cards = Vec::new();
     let game_data = exceldb::get();
 
+    let hero = UserHeroModel::new(user_id, pool.clone());
+
     for &hero_uid in hero_uids {
         if hero_uid == 0 {
             continue; // Skip empty slots
@@ -101,12 +102,10 @@ async fn build_candidate_pool(
 
         let hero_id = if hero_uid < 0 {
             // === TRIAL HERO PATH - NO DATABASE ACCESS ===
-            let trial_id = TRIAL_UID_MAP
-                .get(&hero_uid)
-                .ok_or_else(|| {
-                    tracing::error!("Unknown trial hero UID: {}", hero_uid);
-                    AppError::InvalidRequest
-                })?;
+            let trial_id = TRIAL_UID_MAP.get(&hero_uid).ok_or_else(|| {
+                tracing::error!("Unknown trial hero UID: {}", hero_uid);
+                AppError::InvalidRequest
+            })?;
 
             let trial_data = game_data
                 .hero_trial
@@ -126,8 +125,8 @@ async fn build_candidate_pool(
 
             trial_data.hero_id
         } else {
-            // === REGULAR HERO PATH - USE DATABASE ===
-            let hero = heroes::get_hero_by_hero_uid(pool, user_id, hero_uid as i32).await?;
+            // Regular hero - load from database
+            let hero = hero.get_uid(hero_uid as i32).await?;
             hero.record.hero_id
         };
 

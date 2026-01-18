@@ -18,7 +18,7 @@ pub mod friends;
 pub mod guides;
 pub mod hero_group_snapshots;
 pub mod hero_groups;
-pub mod heroes;
+
 pub mod items;
 pub mod player_card;
 pub mod player_infos;

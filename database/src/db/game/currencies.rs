@@ -11,7 +11,6 @@ pub async fn get_currencies(
         return Ok(Vec::new());
     }
 
-    // Build placeholders for IN clause
     let placeholders = currency_ids
         .iter()
         .map(|_| "?")

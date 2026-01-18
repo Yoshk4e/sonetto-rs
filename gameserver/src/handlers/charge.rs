@@ -55,73 +55,52 @@ pub async fn on_get_month_card_info(
     ctx: Arc<Mutex<ConnectionContext>>,
     req: ClientPacket,
 ) -> Result<(), AppError> {
-    let (can_claim, current_time) = {
+    let (player_id, pool) = {
         let conn = ctx.lock().await;
-        let current_time = common::time::ServerTime::now_ms();
-
-        let can_claim = conn
-            .player_state
-            .as_ref()
-            .map(|s| s.can_claim_month_card(current_time))
-            .unwrap_or(false);
-
-        (can_claim, current_time)
+        (
+            conn.player_id.ok_or(AppError::NotLoggedIn)?,
+            conn.state.db.clone(),
+        )
     };
 
-    if can_claim {
-        tracing::info!("Claiming month card bonus");
+    let current_time = common::time::ServerTime::now_ms();
+    let server_day = common::time::ServerTime::server_day(current_time);
 
-        // these send the birthday blocks bugged for now
+    let active_cards: Vec<(i32, i64)> = sqlx::query_as(
+        "SELECT card_id, end_time
+         FROM user_month_card_history
+         WHERE user_id = ? AND end_time > ?
+         ORDER BY card_id",
+    )
+    .bind(player_id)
+    .bind(current_time / 1000)
+    .fetch_all(&pool)
+    .await?;
 
-        /*  send_push!(
-            ctx,
-            CmdId::GainSpecialBlockPushCmd,
-            GainSpecialBlockPush,
-            "charge/gain_special_block_push.json"
-        );
+    let claimed_today: Option<i32> = sqlx::query_scalar(
+        "SELECT 1 FROM user_month_card_days
+         WHERE user_id = ? AND server_day = ?",
+    )
+    .bind(player_id)
+    .bind(server_day)
+    .fetch_optional(&pool)
+    .await?;
 
-        send_push!(
-            ctx,
-            CmdId::MaterialChangePushCmd,
-            MaterialChangePush,
-            "charge/material_change_push.json"
-        );*/
+    let already_claimed = claimed_today.is_some();
 
-        send_push!(
-            ctx,
-            CmdId::UpdateRedDotPushCmd,
-            UpdateRedDotPush,
-            "charge/update_red_dot_push.json"
-        );
+    let card_infos: Vec<MonthCardInfo> = active_cards
+        .iter()
+        .map(|(card_id, end_time)| MonthCardInfo {
+            id: Some(*card_id),
+            expire_time: Some(*end_time as i32),
+            has_get_bonus: Some(already_claimed),
+        })
+        .collect();
 
-        // Update player state in one place and persist
-        {
-            let mut conn = ctx.lock().await;
-
-            conn.update_and_save_player_state(|state| {
-                state.claim_month_card(current_time);
-                state.mark_activity_pushes_sent(current_time);
-            })
-            .await?;
-        }
-    } else {
-        tracing::info!("Month card already claimed today");
-    }
-
-    // Send reply
-    let reply = GetMonthCardInfoReply {
-        infos: vec![MonthCardInfo {
-            id: Some(610001),
-            expire_time: Some(1767607200),
-            has_get_bonus: Some(!can_claim),
-        }],
-    };
-
-    {
-        let mut conn = ctx.lock().await;
-        conn.send_reply(CmdId::GetMonthCardInfoCmd, reply, 0, req.up_tag)
-            .await?;
-    }
+    let reply = GetMonthCardInfoReply { infos: card_infos };
+    let mut conn = ctx.lock().await;
+    conn.send_reply(CmdId::GetMonthCardInfoCmd, reply, 0, req.up_tag)
+        .await?;
 
     Ok(())
 }

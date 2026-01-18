@@ -57,12 +57,10 @@ pub async fn on_start_dungeon(
         battle_id,
     };
 
-    // Generate deck ONCE
     let card_push = generate_initial_deck(&pool, player_id, &fight_group, max_ap).await?;
 
     let card_deck = card_push.card_group.clone();
 
-    // Create battle using the SAME deck
     let battle_data = create_battle(&pool, battle_ctx, &fight_group, card_deck.clone()).await?;
 
     {
@@ -159,7 +157,7 @@ async fn handle_story_only_episode(
         dungeon_info: Some(UserDungeon {
             chapter_id: Some(chapter_id),
             episode_id: Some(episode_id),
-            star: Some(updated_dungeon.star), // This will now be 1
+            star: Some(updated_dungeon.star),
             challenge_count: Some(updated_dungeon.challenge_count),
             has_record: Some(updated_dungeon.has_record),
             left_return_all_num: Some(1),

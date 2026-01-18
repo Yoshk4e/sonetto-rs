@@ -1,11 +1,11 @@
 use crate::error::AppError;
 use crate::network::packet::ClientPacket;
 use crate::state::{ConnectionContext, parse_store_product};
-use crate::util::{
-    inventory::{add_currencies, add_items},
-    push,
-};
+use crate::util::push;
 use data::exceldb;
+use database::models::game::currencies::UserCurrencyModel;
+use database::models::game::heros::UserHeroModel;
+use database::models::game::items::UserItemModel;
 use prost::Message;
 use sonettobuf::{BuyGoodsReply, BuyGoodsRequest, CmdId};
 use std::sync::Arc;
@@ -29,10 +29,16 @@ pub async fn on_buy_goods(
         select_cost
     );
 
-    let user_id = {
+    let (player_id, pool) = {
         let conn = ctx.lock().await;
-        conn.player_id.ok_or(AppError::NotLoggedIn)?
+        let player_id = conn.player_id.ok_or(AppError::NotLoggedIn)?;
+        let pool = conn.state.db.clone();
+        (player_id, pool)
     };
+
+    let hero = UserHeroModel::new(player_id, pool.clone());
+    let item = UserItemModel::new(player_id, pool.clone());
+    let currency = UserCurrencyModel::new(player_id, pool.clone());
 
     let game_data = exceldb::get();
     let goods = game_data
@@ -53,7 +59,7 @@ pub async fn on_buy_goods(
         let current_buy_count: i32 = sqlx::query_scalar(
             "SELECT buy_count FROM user_store_goods WHERE user_id = ? AND goods_id = ?",
         )
-        .bind(user_id)
+        .bind(player_id)
         .bind(goods_id)
         .fetch_optional(pool)
         .await?
@@ -62,7 +68,7 @@ pub async fn on_buy_goods(
         if goods.max_buy_count > 0 && current_buy_count + quantity > goods.max_buy_count {
             tracing::info!(
                 "User {} at max buy count for goods {} (has {}, trying to buy {}, max {})",
-                user_id,
+                player_id,
                 goods_id,
                 current_buy_count,
                 quantity,
@@ -92,7 +98,7 @@ pub async fn on_buy_goods(
         &goods.cost
     };
 
-    let (cost_items, cost_currencies, _, _, _) = parse_store_product(cost_str);
+    let (cost_items, cost_currencies, _, _, _, _) = parse_store_product(cost_str);
     let cost_items: Vec<(u32, i32)> = cost_items
         .iter()
         .map(|(id, amt)| (*id, amt * quantity))
@@ -107,7 +113,8 @@ pub async fn on_buy_goods(
         let pool = &conn.state.db;
 
         for (item_id, amount) in &cost_items {
-            let current = database::db::game::items::get_item(pool, user_id, *item_id)
+            let current = item
+                .get_item(*item_id)
                 .await?
                 .map(|i| i.quantity)
                 .unwrap_or(0);
@@ -115,7 +122,7 @@ pub async fn on_buy_goods(
             if current < *amount {
                 tracing::info!(
                     "User {} insufficient item {} (has {}, needs {})",
-                    user_id,
+                    player_id,
                     item_id,
                     current,
                     amount
@@ -123,7 +130,8 @@ pub async fn on_buy_goods(
 
                 drop(conn);
 
-                push::send_item_change_push(ctx.clone(), user_id, vec![*item_id]).await?;
+                push::send_item_change_push(ctx.clone(), player_id, vec![*item_id], vec![], vec![])
+                    .await?;
 
                 let mut conn = ctx.lock().await;
                 conn.send_reply(
@@ -144,7 +152,8 @@ pub async fn on_buy_goods(
         }
 
         for (currency_id, amount) in &cost_currencies {
-            let current = database::db::game::currencies::get_currency(pool, user_id, *currency_id)
+            let current = currency
+                .get_currency(*currency_id)
                 .await?
                 .map(|c| c.quantity)
                 .unwrap_or(0);
@@ -152,7 +161,7 @@ pub async fn on_buy_goods(
             if current < *amount {
                 tracing::info!(
                     "User {} insufficient currency {} (has {}, needs {})",
-                    user_id,
+                    player_id,
                     currency_id,
                     current,
                     amount
@@ -160,7 +169,7 @@ pub async fn on_buy_goods(
 
                 drop(conn);
 
-                push::send_currency_change_push(ctx.clone(), user_id, vec![(*currency_id, 0)])
+                push::send_currency_change_push(ctx.clone(), player_id, vec![(*currency_id, 0)])
                     .await?;
 
                 let mut conn = ctx.lock().await;
@@ -182,13 +191,11 @@ pub async fn on_buy_goods(
         }
 
         for (item_id, amount) in &cost_items {
-            database::db::game::items::remove_item_quantity(pool, user_id, *item_id, *amount)
-                .await?;
+            item.remove_item_quantity(*item_id, *amount).await?;
         }
 
         for (currency_id, amount) in &cost_currencies {
-            database::db::game::currencies::remove_currency(pool, user_id, *currency_id, *amount)
-                .await?;
+            currency.remove_currency(*currency_id, *amount).await?;
         }
 
         sqlx::query(
@@ -197,7 +204,7 @@ pub async fn on_buy_goods(
              ON CONFLICT(user_id, goods_id)
              DO UPDATE SET buy_count = buy_count + ?",
         )
-        .bind(user_id)
+        .bind(player_id)
         .bind(goods_id)
         .bind(quantity)
         .bind(quantity)
@@ -206,13 +213,14 @@ pub async fn on_buy_goods(
 
         tracing::info!(
             "User {} purchased goods {} x{}",
-            user_id,
+            player_id,
             goods_id,
             quantity
         );
     }
 
-    let (items, currencies, equips, heroes, power_items) = parse_store_product(&goods.product);
+    let (items, currencies, equips, heroes, power_items, insight_selectors) =
+        parse_store_product(&goods.product);
     let items: Vec<(u32, i32)> = items
         .iter()
         .map(|(id, amt)| (*id, amt * quantity))
@@ -233,6 +241,10 @@ pub async fn on_buy_goods(
         .iter()
         .map(|(id, amt)| (*id, amt * quantity))
         .collect();
+    let insight_selectors: Vec<(u32, i32)> = insight_selectors
+        .iter()
+        .map(|(id, amt)| (*id, amt * quantity))
+        .collect();
 
     let (
         changed_item_ids,
@@ -245,13 +257,13 @@ pub async fn on_buy_goods(
         let pool = &conn.state.db;
 
         let mut item_ids = if !items.is_empty() {
-            add_items(pool, user_id, &items).await?
+            item.create_items(&items).await?
         } else {
             vec![]
         };
 
         let mut currency_ids = if !currencies.is_empty() {
-            add_currencies(pool, user_id, &currencies).await?
+            currency.create_currencies(&currencies).await?
         } else {
             vec![]
         };
@@ -259,7 +271,7 @@ pub async fn on_buy_goods(
         let equip_ids = if !equips.is_empty() {
             database::db::game::equipment::add_equipments(
                 pool,
-                user_id,
+                player_id,
                 &equips
                     .iter()
                     .map(|(id, count)| (*id as i32, *count))
@@ -267,13 +279,11 @@ pub async fn on_buy_goods(
             )
             .await?
         } else {
-            vec![]
+            Vec::new()
         };
 
         if !power_items.is_empty() {
-            database::db::game::items::add_power_items(
-                pool,
-                user_id,
+            item.create_power_items(
                 &power_items
                     .iter()
                     .map(|(id, count)| (*id as i32, *count))
@@ -282,15 +292,26 @@ pub async fn on_buy_goods(
             .await?;
         }
 
+        if !insight_selectors.is_empty() {
+            let insight_item_ids = item
+                .create_insight_items(
+                    &insight_selectors
+                        .iter()
+                        .map(|(id, count)| (*id as i32, *count))
+                        .collect::<Vec<_>>(),
+                )
+                .await?;
+            item_ids.extend(insight_item_ids);
+        }
+
         let mut hero_dupe_items = Vec::new();
         let mut hero_dupe_currencies = Vec::new();
 
         for (hero_id, _count) in &heroes {
             let hero_id = *hero_id as i32;
 
-            if database::db::game::heroes::has_hero(pool, user_id, hero_id).await? {
-                let duplicate_count =
-                    database::db::game::heroes::add_hero_duplicate(pool, user_id, hero_id).await?;
+            if hero.has_hero(hero_id).await? {
+                let duplicate_count = hero.add_hero_duplicate(hero_id).await?;
 
                 let (dupe_items, dupe_currencies) =
                     crate::state::grant_dupe_rewards(hero_id, duplicate_count).await?;
@@ -300,22 +321,22 @@ pub async fn on_buy_goods(
 
                 tracing::info!(
                     "User {} already has hero {}, granted dupe rewards (duplicate #{})",
-                    user_id,
+                    player_id,
                     hero_id,
                     duplicate_count
                 );
             } else {
-                database::db::game::heroes::create_hero(pool, user_id, hero_id).await?;
-                tracing::info!("User {} received new hero {}", user_id, hero_id);
+                hero.create_hero(hero_id).await?;
+                tracing::info!("User {} received new hero {}", player_id, hero_id);
             }
         }
 
         if !hero_dupe_items.is_empty() {
-            let dupe_item_ids = add_items(pool, user_id, &hero_dupe_items).await?;
+            let dupe_item_ids = item.create_items(&hero_dupe_items).await?;
             item_ids.extend(dupe_item_ids);
         }
         if !hero_dupe_currencies.is_empty() {
-            let dupe_currency_ids = add_currencies(pool, user_id, &hero_dupe_currencies).await?;
+            let dupe_currency_ids = currency.create_currencies(&hero_dupe_currencies).await?;
             currency_ids.extend(dupe_currency_ids);
         }
 
@@ -348,6 +369,9 @@ pub async fn on_buy_goods(
     for (power_item_id, amount) in &power_items {
         material_changes.push((10, *power_item_id, *amount));
     }
+    for (insight_selector_id, amount) in &insight_selectors {
+        material_changes.push((24, *insight_selector_id, *amount));
+    }
     if hero_dupe_items.is_empty() && hero_dupe_currencies.is_empty() {
         for (hero_id, amount) in &heroes {
             material_changes.push((4, *hero_id, *amount));
@@ -370,26 +394,29 @@ pub async fn on_buy_goods(
         .await?;
     }
 
-    let mut all_changed_items = changed_item_ids;
-    all_changed_items.extend(cost_items.iter().map(|(id, _)| *id));
+    let mut all_changed_items: Vec<u32> =
+        changed_item_ids.into_iter().map(|id| id as u32).collect();
+
+    all_changed_items.extend(cost_items.iter().map(|(id, _)| *id as u32));
 
     if !all_changed_items.is_empty() {
-        push::send_item_change_push(ctx.clone(), user_id, all_changed_items).await?;
+        push::send_item_change_push(ctx.clone(), player_id, all_changed_items, vec![], vec![])
+            .await?;
     }
 
     if !changed_currency_ids.is_empty() || !cost_currencies.is_empty() {
         let mut all_changed_currencies = changed_currency_ids;
         all_changed_currencies.extend(cost_currencies.iter().map(|(id, _)| (*id, 0)));
-        push::send_currency_change_push(ctx.clone(), user_id, all_changed_currencies).await?;
+        push::send_currency_change_push(ctx.clone(), player_id, all_changed_currencies).await?;
     }
 
     if !changed_equip_ids.is_empty() {
-        push::send_equip_update_push(ctx.clone(), user_id, changed_equip_ids).await?;
+        push::send_equip_update_push_by_uid(ctx.clone(), player_id, &changed_equip_ids).await?;
     }
 
     if !material_changes.is_empty() {
         push::send_material_change_push(ctx.clone(), material_changes, Some(27)).await?;
     }
-    tracing::info!("Successfully completed purchase for user {}", user_id);
+    tracing::info!("Successfully completed purchase for user {}", player_id);
     Ok(())
 }

@@ -106,10 +106,7 @@ impl BattleTable {
 
         for (idx, record) in records.iter().enumerate() {
             by_id.insert(record.id, idx);
-            by_group
-                .entry(record.monster_group_ids.clone())
-                .or_default()
-                .push(idx);
+            by_group.entry(record.monster_group_ids.clone()).or_default().push(idx);
         }
 
         Ok(Self {
@@ -142,10 +139,6 @@ impl BattleTable {
         self.records.iter()
     }
 
-    pub fn len(&self) -> usize {
-        self.records.len()
-    }
-    pub fn is_empty(&self) -> bool {
-        self.records.is_empty()
-    }
+    pub fn len(&self) -> usize { self.records.len() }
+    pub fn is_empty(&self) -> bool { self.records.is_empty() }
 }

@@ -15,6 +15,8 @@ pub use result::{GachaPool, GachaResult};
 pub use rewards::grant_dupe_rewards;
 pub use state::{BannerType, GachaState, load_gacha_state, save_gacha_state};
 
+use crate::state::gacha::helpers::parse_weighted_id_list;
+
 pub async fn build_gacha(pool_id: i32, sp_pool_info: Option<&SpPoolInfo>) -> Result<GachaPool> {
     let game_data = exceldb::get();
 
@@ -29,16 +31,27 @@ pub async fn build_gacha(pool_id: i32, sp_pool_info: Option<&SpPoolInfo>) -> Res
         None => BannerType::RateUp,
     };
 
-    let (six_up, five_up) = match banner_type {
-        BannerType::RateUp => parse_up_heroes(pool_cfg.up_weight.as_str()),
+    let (six_up, five_up, six_up_weighted) = match banner_type {
+        BannerType::Yearning => {
+            let (six_up, five_up) = parse_up_heroes(pool_cfg.up_weight.as_str());
+
+            let weighted = parse_weighted_id_list(pool_cfg.double_ssr_up_rates.as_str());
+
+            (six_up, five_up, weighted)
+        }
+
+        BannerType::RateUp => {
+            let (six_up, five_up) = parse_up_heroes(pool_cfg.up_weight.as_str());
+
+            (six_up, five_up, Vec::new())
+        }
 
         BannerType::Ripple => {
             let sp = sp_pool_info.as_ref().unwrap();
-
-            (sp.up_hero_ids.clone(), Vec::new())
+            (sp.up_hero_ids.clone(), Vec::new(), Vec::new())
         }
 
-        BannerType::Standard => (Vec::new(), Vec::new()),
+        BannerType::Standard => (Vec::new(), Vec::new(), Vec::new()),
     };
 
     let summons = game_data.summon.iter().filter(|p| p.id == pool_id);
@@ -74,6 +87,7 @@ pub async fn build_gacha(pool_id: i32, sp_pool_info: Option<&SpPoolInfo>) -> Res
 
     Ok(GachaPool {
         six_up,
+        six_up_weighted,
         six_normal,
         five_up,
         five_normal,

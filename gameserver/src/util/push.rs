@@ -43,15 +43,14 @@ pub async fn send_item_change_push(
     ctx: Arc<Mutex<ConnectionContext>>,
     user_id: i64,
     changed_item_ids: Vec<u32>,
+    changed_power_item_ids: Vec<u32>,
+    changed_insight_item_ids: Vec<u32>,
 ) -> Result<(), AppError> {
-    if changed_item_ids.is_empty() {
-        return Ok(());
-    }
-
     let (items_list, power_items_list, insight_items_list) = {
         let conn = ctx.lock().await;
         let pool = &conn.state.db;
 
+        // Normal items: fetch per item_id
         let mut items = Vec::new();
         for item_id in &changed_item_ids {
             if let Some(item) = items::get_item(pool, user_id, *item_id).await? {
@@ -59,9 +58,17 @@ pub async fn send_item_change_push(
             }
         }
 
-        let power_items = items::get_all_power_items(pool, user_id).await?;
+        let mut power_items = Vec::new();
+        for item_id in &changed_power_item_ids {
+            let rows = items::get_power_item(pool, user_id, *item_id).await?;
+            power_items.extend(rows);
+        }
 
-        let insight_items = items::get_all_insight_items(pool, user_id).await?;
+        let mut insight_items = Vec::new();
+        for item_id in &changed_insight_item_ids {
+            let rows = items::get_insight_item(pool, user_id, *item_id).await?;
+            insight_items.extend(rows);
+        }
 
         (items, power_items, insight_items)
     };
@@ -286,22 +293,19 @@ pub async fn send_equip_update_push(
         let pool = &conn.state.db;
 
         let mut all_equips = Vec::new();
-
         for equip_id in equip_ids {
             let equips: Vec<database::models::game::equipment::Equipment> = sqlx::query_as(
                 "SELECT uid, user_id, equip_id, level, exp, break_lv, count, is_lock, refine_lv, created_at, updated_at
                  FROM equipment
-                 WHERE user_id = ? AND equip_id = ?
+                 WHERE user_id = ? AND equip_id = ? AND count > 0
                  ORDER BY uid"
             )
             .bind(user_id)
             .bind(equip_id)
             .fetch_all(pool)
             .await?;
-
             all_equips.extend(equips);
         }
-
         all_equips
     };
 
@@ -350,6 +354,68 @@ pub async fn on_finish_story_notify(
     tracing::info!("Notifying client of story finish: story_id={:?}", story_id);
     let mut conn = ctx.lock().await;
     conn.notify(CmdId::StoryFinishPushCmd, notify).await?;
+    Ok(())
+}
+
+pub async fn send_equip_update_push_by_uid(
+    ctx: Arc<Mutex<ConnectionContext>>,
+    user_id: i64,
+    uids: &[i64],
+) -> Result<(), AppError> {
+    if uids.is_empty() {
+        return Ok(());
+    }
+
+    let equips = {
+        let conn = ctx.lock().await;
+        let pool = &conn.state.db;
+
+        let placeholders = std::iter::repeat("?")
+            .take(uids.len())
+            .collect::<Vec<_>>()
+            .join(",");
+
+        let sql = format!(
+            "SELECT uid, user_id, equip_id, level, exp, break_lv, count, is_lock, refine_lv, created_at, updated_at
+             FROM equipment
+             WHERE user_id = ? AND uid IN ({}) AND count > 0",
+            placeholders
+        );
+
+        let mut q =
+            sqlx::query_as::<_, database::models::game::equipment::Equipment>(&sql).bind(user_id);
+
+        for uid in uids {
+            q = q.bind(uid);
+        }
+
+        q.fetch_all(pool).await?
+    };
+
+    let push = sonettobuf::EquipUpdatePush {
+        equips: equips
+            .into_iter()
+            .map(|e| sonettobuf::Equip {
+                uid: Some(e.uid),
+                equip_id: Some(e.equip_id),
+                level: Some(e.level),
+                exp: Some(e.exp),
+                break_lv: Some(e.break_lv),
+                count: Some(e.count),
+                is_lock: Some(e.is_lock),
+                refine_lv: Some(e.refine_lv),
+            })
+            .collect(),
+    };
+
+    let mut conn = ctx.lock().await;
+    conn.notify(CmdId::EquipUpdatePushCmd, push.clone()).await?;
+
+    tracing::info!(
+        "Sent EquipUpdatePush to user {}: {} equipment items",
+        user_id,
+        push.equips.len()
+    );
 
     Ok(())
 }

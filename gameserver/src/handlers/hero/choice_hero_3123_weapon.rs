@@ -1,7 +1,7 @@
 use crate::error::AppError;
 use crate::network::packet::ClientPacket;
 use crate::state::ConnectionContext;
-use database::db::game::heroes;
+use database::models::game::heros::{HeroModel, UserHeroModel};
 use prost::Message;
 use sonettobuf::{ChoiceHero3123WeaponReply, ChoiceHero3123WeaponRequest, CmdId, HeroUpdatePush};
 use std::sync::Arc;
@@ -32,11 +32,13 @@ pub async fn on_choice_hero_3123_weapon(
         let player_id = conn.player_id.ok_or(AppError::NotLoggedIn)?;
         let pool = &conn.state.db;
 
-        // Get hero
-        let mut hero = heroes::get_hero_by_hero_id(pool, player_id, hero_id).await?;
+        let hero = UserHeroModel::new(player_id, pool.clone());
 
-        // Update equipped gear
-        hero.update_special_equipped_gear(pool, special_equip.clone())
+        let ezio = hero.get(hero_id).await?;
+
+        let hero_info: sonettobuf::HeroInfo = ezio.into();
+
+        hero.update_special_equipped_gear(hero_id, special_equip.clone())
             .await?;
 
         tracing::info!(
@@ -46,13 +48,12 @@ pub async fn on_choice_hero_3123_weapon(
             hero_id
         );
 
-        hero
+        hero_info
     };
 
     {
         let mut conn = ctx.lock().await;
 
-        // Send hero update push so client refreshes the UI
         let hero_proto: sonettobuf::HeroInfo = updated_hero.into();
         let push = HeroUpdatePush {
             hero_updates: vec![hero_proto],

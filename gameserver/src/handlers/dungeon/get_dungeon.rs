@@ -86,7 +86,7 @@ async fn send_dungeon_info_pushes(
         {
             let mut conn = ctx.lock().await;
             conn.notify(CmdId::DungeonInfosPushCmd, push).await?;
-        } // conn dropped here
+        }
 
         tracing::debug!("Sent dungeon push chunk {} for user {}", i + 1, user_id);
     }

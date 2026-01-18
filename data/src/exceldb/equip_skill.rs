@@ -67,7 +67,10 @@ impl EquipSkillTable {
             by_id.insert(record.id, idx);
         }
 
-        Ok(Self { records, by_id })
+        Ok(Self {
+            records,
+            by_id,
+        })
     }
 
     #[inline]
@@ -85,10 +88,6 @@ impl EquipSkillTable {
         self.records.iter()
     }
 
-    pub fn len(&self) -> usize {
-        self.records.len()
-    }
-    pub fn is_empty(&self) -> bool {
-        self.records.is_empty()
-    }
+    pub fn len(&self) -> usize { self.records.len() }
+    pub fn is_empty(&self) -> bool { self.records.is_empty() }
 }

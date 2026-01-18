@@ -1,10 +1,8 @@
+use crate::error::AppError;
 use crate::network::packet::ClientPacket;
-use crate::{error::AppError, send_push};
 
 use crate::state::ConnectionContext;
-use sonettobuf::{
-    CmdId, CurrencyChangePush, GetAssistBonusReply, ItemChangePush, MaterialChangePush,
-};
+use sonettobuf::{CmdId, GetAssistBonusReply};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -24,30 +22,6 @@ pub async fn on_get_assist_bonus(
 
     if should_push {
         tracing::info!("Sending state pushes from GetAssistBonus");
-        send_push!(
-            ctx,
-            CmdId::CurrencyChangePushCmd,
-            CurrencyChangePush,
-            "currency/currency_push_1.json"
-        );
-        send_push!(
-            ctx,
-            CmdId::ItemChangePushCmd,
-            ItemChangePush,
-            "item/item_push_1.json"
-        );
-        send_push!(
-            ctx,
-            CmdId::CurrencyChangePushCmd,
-            CurrencyChangePush,
-            "currency/currency_push_2.json"
-        );
-        send_push!(
-            ctx,
-            CmdId::MaterialChangePushCmd,
-            MaterialChangePush,
-            "material/material_push_1.json"
-        );
     } else {
         tracing::warn!("No state pushes from GetAssistBonus");
     }

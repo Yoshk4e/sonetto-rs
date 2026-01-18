@@ -138,7 +138,7 @@ pub async fn on_get101_bonus(
     let material_rewards = vec![(1, 140001, 1)];
 
     // Send all pushes
-    push::send_item_change_push(ctx.clone(), player_id, changed_item_ids).await?;
+    push::send_item_change_push(ctx.clone(), player_id, changed_item_ids, vec![], vec![]).await?;
     push::send_red_dot_push(ctx.clone(), player_id, Some(vec![2240])).await?;
     push::send_material_change_push(ctx.clone(), material_rewards, Some(25)).await?; // 25 = activity source
 
