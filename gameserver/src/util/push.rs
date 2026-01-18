@@ -1,9 +1,6 @@
 use crate::error::AppError;
 use crate::state::ConnectionContext;
-use database::db::game::{
-    currencies, items, red_dots,
-    stories::{self, finish_story},
-};
+use database::db::game::{currencies, items, red_dots, stories::finish_story};
 use sonettobuf::{
     CmdId, CurrencyChangePush, EndDungeonPush, ItemChangePush, MaterialChangePush, MaterialData,
     StoryFinishPush, UpdateRedDotPush,

@@ -72,13 +72,11 @@ pub async fn on_equip_refine(
             }
         };
 
-        let is_valid = if eat_equipment.equip_id == target.equip_id {
-            true
-        } else if eat_equipment.equip_id == 1000 || eat_equipment.equip_id == 1001 {
-            true
-        } else {
-            false
-        };
+        const UNIVERSAL_MATERIALS: [i32; 2] = [1000, 1001];
+
+        let id = eat_equipment.equip_id;
+
+        let is_valid = id == target.equip_id || UNIVERSAL_MATERIALS.contains(&id);
 
         if !is_valid {
             tracing::info!(

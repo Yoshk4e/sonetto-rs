@@ -74,7 +74,8 @@ async fn build_attacker_team(
         }
         let hero_data = hero.get_uid(*hero_uid as i32).await?;
         let entity =
-            entity_builder::build_hero_entity(pool, &hero_data, (position + 1) as i32, 1).await;
+            entity_builder::build_hero_entity(pool, &hero_data, (position + 1) as i32, 1, false)
+                .await;
         entitys.push(entity);
     }
 
@@ -84,7 +85,7 @@ async fn build_attacker_team(
             continue;
         }
         let hero_data = hero.get_uid(*hero_uid as i32).await?;
-        let entity = entity_builder::build_hero_entity(pool, &hero_data, -1, 1).await;
+        let entity = entity_builder::build_hero_entity(pool, &hero_data, -1, 1, true).await;
         sub_entitys.push(entity);
     }
 
@@ -100,6 +101,7 @@ async fn build_attacker_team(
     ))
 }
 
+#[allow(dead_code)]
 fn build_trial_hero_entity(
     hero_uid: i64,
     position: i32,
@@ -266,15 +268,14 @@ fn parse_skill_group(skill_str: &str, target_group: i32) -> Vec<i32> {
     // Parse: "1#31240111#31240112#31240113|2#31240121#31240122#31240123"
     for group_str in skill_str.split('|') {
         let parts: Vec<&str> = group_str.split('#').collect();
-        if let Some(first) = parts.first() {
-            if let Ok(group_num) = first.parse::<i32>() {
-                if group_num == target_group {
-                    return parts[1..]
-                        .iter()
-                        .filter_map(|s| s.parse::<i32>().ok())
-                        .collect();
-                }
-            }
+        if let Some(first) = parts.first()
+            && let Ok(group_num) = first.parse::<i32>()
+            && group_num == target_group
+        {
+            return parts[1..]
+                .iter()
+                .filter_map(|s| s.parse::<i32>().ok())
+                .collect();
         }
     }
     vec![]
@@ -540,15 +541,14 @@ fn parse_monster_skill_group(active_skill: &str, target_group: i32) -> Vec<i32> 
     for group_str in active_skill.split('|') {
         let parts: Vec<&str> = group_str.split('#').collect();
 
-        if let Some(first) = parts.first() {
-            if let Ok(group_num) = first.parse::<i32>() {
-                if group_num == target_group {
-                    return parts[1..]
-                        .iter()
-                        .filter_map(|s| s.parse::<i32>().ok())
-                        .collect();
-                }
-            }
+        if let Some(first) = parts.first()
+            && let Ok(group_num) = first.parse::<i32>()
+            && group_num == target_group
+        {
+            return parts[1..]
+                .iter()
+                .filter_map(|s| s.parse::<i32>().ok())
+                .collect();
         }
     }
 
@@ -574,7 +574,7 @@ fn build_player_skills(cloth_id: Option<i32>) -> Vec<sonettobuf::PlayerSkillInfo
             skills.push(sonettobuf::PlayerSkillInfo {
                 skill_id: Some(cloth.skill1),
                 cd: Some(cloth.cd1),
-                need_power: Some(cloth.use_power1.get(0).copied().unwrap_or(0)),
+                need_power: Some(cloth.use_power1.first().copied().unwrap_or(0)),
                 r#type: Some(0),
             });
         }
@@ -584,7 +584,7 @@ fn build_player_skills(cloth_id: Option<i32>) -> Vec<sonettobuf::PlayerSkillInfo
             skills.push(sonettobuf::PlayerSkillInfo {
                 skill_id: Some(cloth.skill2),
                 cd: Some(cloth.cd2),
-                need_power: Some(cloth.use_power2.get(0).copied().unwrap_or(0)),
+                need_power: Some(cloth.use_power2.first().copied().unwrap_or(0)),
                 r#type: Some(0),
             });
         }

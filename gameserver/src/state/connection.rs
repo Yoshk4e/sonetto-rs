@@ -6,6 +6,8 @@ use tokio::net::TcpStream;
 use tokio::sync::Mutex;
 
 use crate::error::AppError;
+
+use crate::state::battle::manager::fight_data_mgr::FightDataMgr;
 use crate::util::common::{encode_message, send_raw_server_message};
 use sonettobuf::CmdId;
 
@@ -29,7 +31,7 @@ pub struct ConnectionContext {
 }
 
 #[allow(dead_code)]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default)]
 pub struct ActiveBattle {
     pub tower_type: Option<i32>,
     pub tower_id: Option<i32>,
@@ -48,6 +50,8 @@ pub struct ActiveBattle {
     pub is_replay: Option<bool>,
     pub replay_episode_id: Option<i32>,
     pub multiplication: Option<i32>,
+    pub ai_deck: Vec<sonettobuf::CardInfo>,
+    pub fight_data_mgr: Option<FightDataMgr>,
 }
 
 #[allow(dead_code)]

@@ -45,7 +45,7 @@ pub async fn on_hero_talent_style_stat(
         conn.notify(
             CmdId::HeroHeroUpdatePushCmd,
             HeroUpdatePush {
-                hero_updates: vec![hero_info.into()],
+                hero_updates: vec![hero_info],
             },
         )
         .await?;

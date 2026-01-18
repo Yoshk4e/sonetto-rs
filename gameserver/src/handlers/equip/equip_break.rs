@@ -113,7 +113,7 @@ pub async fn on_equip_break(
         let (items, _, _, _, _, _) = crate::state::parse_store_product(&next_break.cost);
 
         for (item_id, amount) in &items {
-            let success = item.remove_item_quantity(*item_id, *amount as i32).await?;
+            let success = item.remove_item_quantity(*item_id, *amount).await?;
             if !success {
                 tracing::warn!(
                     "User {} insufficient items for break (item_id={}, needs={})",

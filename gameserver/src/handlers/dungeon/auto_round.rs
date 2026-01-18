@@ -32,7 +32,6 @@ pub async fn on_auto_round(
     );
 
     let (
-        fight,
         current_deck,
         fight_group,
         chapter_id,
@@ -41,6 +40,8 @@ pub async fn on_auto_round(
         battle_id,
         round_num,
         multiplication,
+        ai_deck,
+        fight_data_mgr,
     ) = {
         let conn = ctx.lock().await;
         let battle = conn
@@ -49,7 +50,6 @@ pub async fn on_auto_round(
             .ok_or(AppError::InvalidRequest)?;
 
         (
-            battle.fight.clone().ok_or(AppError::InvalidRequest)?,
             battle.current_deck.clone(),
             battle.fight_group.clone(),
             battle.chapter_id,
@@ -58,6 +58,8 @@ pub async fn on_auto_round(
             battle.fight_id.unwrap_or_default(),
             battle.current_round,
             battle.multiplication.unwrap_or(1),
+            battle.ai_deck.clone(),
+            battle.fight_data_mgr.clone().unwrap_or_default(),
         )
     };
 
@@ -73,9 +75,9 @@ pub async fn on_auto_round(
 
     tracing::info!("AutoRound server selected {} ops", auto_opers.len());
 
-    let mut simulator = BattleSimulator::new(fight);
+    let mut simulator = BattleSimulator::new(fight_data_mgr);
     let mut round = simulator
-        .process_round(auto_opers.clone(), current_deck)
+        .process_round(auto_opers.clone(), current_deck, ai_deck)
         .await?;
 
     round.is_finish = Some(true);

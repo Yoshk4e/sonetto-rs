@@ -46,7 +46,7 @@ pub async fn on_destiny_stone_use(
     {
         let mut conn = ctx.lock().await;
 
-        let hero_proto: sonettobuf::HeroInfo = updated_hero.into();
+        let hero_proto: sonettobuf::HeroInfo = updated_hero;
         let push = HeroUpdatePush {
             hero_updates: vec![hero_proto],
         };

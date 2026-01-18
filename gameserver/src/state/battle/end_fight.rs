@@ -24,20 +24,20 @@ pub async fn send_end_fight_push(
     fight_group: FightGroup,
     attacker_stats: Vec<BattleStats>,
     defender_stats: Vec<BattleStats>,
-    is_record: bool, // ADD THIS PARAMETER
+    is_record: bool,
 ) -> Result<(), AppError> {
     let fight_time = chrono::Utc::now().timestamp_millis();
 
     // Build attacker statistics
     let attack_statistics = attacker_stats
         .into_iter()
-        .map(|stats| build_fight_statistics(stats))
+        .map(build_fight_statistics)
         .collect();
 
     // Build defender statistics
     let defense_statistics = defender_stats
         .into_iter()
-        .map(|stats| build_fight_statistics(stats))
+        .map(build_fight_statistics)
         .collect();
 
     let record = FightRecord {

@@ -39,7 +39,7 @@ pub async fn on_login(
         return login_error(&ctx, "Invalid token", req.up_tag).await;
     }
 
-    let now = ServerTime::now_ms() as i64;
+    let now = ServerTime::now_ms();
     if token_expires_at.is_some_and(|exp| now > exp) {
         return login_error(&ctx, "Token expired", req.up_tag).await;
     }

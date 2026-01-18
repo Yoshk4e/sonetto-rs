@@ -127,7 +127,7 @@ pub async fn on_use_skin(
     {
         let mut conn = ctx.lock().await;
 
-        let hero_proto: sonettobuf::HeroInfo = updated_hero.into();
+        let hero_proto: sonettobuf::HeroInfo = updated_hero;
         let push = HeroUpdatePush {
             hero_updates: vec![hero_proto],
         };

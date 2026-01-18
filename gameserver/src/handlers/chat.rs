@@ -51,14 +51,14 @@ pub async fn on_send_msg(
     messages.push(ChatMsg {
         msg_id: Some(player_msg_id),
         sender_id: Some(player_id),
-        channel_type: request.channel_type.clone(),
+        channel_type: request.channel_type,
         sender_name: Some(username),
         portrait: Some(portrait),
         content: request.content.clone(),
         send_time: Some(now),
         level: Some(level),
         recipient_id: Some(1337),
-        msg_type: request.msg_type.clone(),
+        msg_type: request.msg_type,
         ext_data: request.ext_data.clone(),
     });
 
@@ -66,7 +66,7 @@ pub async fn on_send_msg(
         messages.push(ChatMsg {
             msg_id: Some(bot_msg_id),
             sender_id: Some(1337),
-            channel_type: request.channel_type.clone(),
+            channel_type: request.channel_type,
             sender_name: Some("Sonetto Bot".to_string()),
             portrait: Some(171805),
             content: Some(bot_text),

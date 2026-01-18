@@ -43,7 +43,6 @@ async fn main() -> anyhow::Result<()> {
 
     let db_settings = DatabaseSettings {
         db_name: config().database.path.to_string_lossy().to_string(),
-        ..Default::default()
     };
 
     let db = connect_to(&db_settings).await?;

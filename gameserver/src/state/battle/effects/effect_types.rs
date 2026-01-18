@@ -928,12 +928,6 @@ impl EffectType {
     }
 }
 
-impl Default for EffectType {
-    fn default() -> Self {
-        Self::Unknown
-    }
-}
-
 impl From<i32> for EffectType {
     fn from(value: i32) -> Self {
         Self::from_i32(value)

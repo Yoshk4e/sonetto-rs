@@ -54,7 +54,7 @@ pub async fn on_choice_hero_3123_weapon(
     {
         let mut conn = ctx.lock().await;
 
-        let hero_proto: sonettobuf::HeroInfo = updated_hero.into();
+        let hero_proto: sonettobuf::HeroInfo = updated_hero;
         let push = HeroUpdatePush {
             hero_updates: vec![hero_proto],
         };

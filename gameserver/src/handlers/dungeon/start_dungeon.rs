@@ -55,13 +55,15 @@ pub async fn on_start_dungeon(
         chapter_id,
         episode_id,
         battle_id,
+        max_ap,
     };
 
     let card_push = generate_initial_deck(&pool, player_id, &fight_group, max_ap).await?;
 
     let card_deck = card_push.card_group.clone();
 
-    let battle_data = create_battle(&pool, battle_ctx, &fight_group, card_deck.clone()).await?;
+    let (modified_fight, initial_round, fight_data_mgr, ai_deck) =
+        create_battle(&pool, battle_ctx, &fight_group, card_deck.clone()).await?;
 
     {
         let mut conn = ctx.lock().await;
@@ -73,7 +75,7 @@ pub async fn on_start_dungeon(
             chapter_id,
             difficulty: None,
             talent_plan_id: None,
-            fight: battle_data.fight.clone(),
+            fight: Some(modified_fight.clone()),
             current_round: 1,
             act_point: max_ap,
             power: 15,
@@ -83,6 +85,8 @@ pub async fn on_start_dungeon(
             replay_episode_id: Some(episode_id),
             fight_id: Some(chrono::Utc::now().timestamp_millis()),
             multiplication: Some(multiplication),
+            ai_deck,
+            fight_data_mgr: Some(fight_data_mgr),
         });
     }
 
@@ -116,8 +120,8 @@ pub async fn on_start_dungeon(
     };
 
     let reply = StartDungeonReply {
-        fight: battle_data.fight,
-        round: battle_data.round,
+        fight: Some(modified_fight),
+        round: Some(initial_round),
     };
 
     let mut conn = ctx.lock().await;

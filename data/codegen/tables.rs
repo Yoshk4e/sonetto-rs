@@ -43,4 +43,8 @@ pub const FILTER_TABLES: &[&str] = &[
     "month_card",
     "equip_break_cost",
     "equip_strengthen_cost",
+    "skill_buff",
+    "activity174_role",
+    "activity191_role",
+    "character_destiny_facets",
 ];

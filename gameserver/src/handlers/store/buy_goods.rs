@@ -397,7 +397,7 @@ pub async fn on_buy_goods(
     let mut all_changed_items: Vec<u32> =
         changed_item_ids.into_iter().map(|id| id as u32).collect();
 
-    all_changed_items.extend(cost_items.iter().map(|(id, _)| *id as u32));
+    all_changed_items.extend(cost_items.iter().map(|(id, _)| *id));
 
     if !all_changed_items.is_empty() {
         push::send_item_change_push(ctx.clone(), player_id, all_changed_items, vec![], vec![])

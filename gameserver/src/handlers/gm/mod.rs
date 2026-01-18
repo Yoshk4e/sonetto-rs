@@ -131,7 +131,7 @@ async fn cmd_level(ctx: CommandContext) -> Result<String, AppError> {
         Err(_) => return Ok(format!("Invalid level: {}", ctx.args[0])),
     };
 
-    if level < 1 || level > 80 {
+    if !(1..=80).contains(&level) {
         return Ok("Level must be between 1 and 80".to_string());
     }
 

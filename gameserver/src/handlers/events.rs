@@ -4,7 +4,6 @@ use crate::state::ConnectionContext;
 use crate::{
     error::AppError,
     util::{
-        common::send_message,
         data_loader::GameDataLoader,
         inventory::{add_currencies, add_items},
         push,
@@ -15,11 +14,9 @@ use prost::Message;
 use sonettobuf::{
     Act101Info, Act160GetInfoReply, Act165GetInfoReply, CmdId, Get101BonusReply,
     Get101BonusRequest, Get101InfosReply, Get101InfosRequest, GetAct125InfosReply,
-    GetAct125InfosRequest, GetAct189InfoReply, GetAct208InfoReply, GetAct209InfoReply,
-    GetActivityInfosReply,
+    GetAct125InfosRequest, GetAct208InfoReply, GetAct209InfoReply, GetActivityInfosReply,
 };
 use std::sync::Arc;
-use tokio::net::TcpStream;
 use tokio::sync::Mutex;
 
 pub async fn on_get_activity_infos(

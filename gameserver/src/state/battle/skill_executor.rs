@@ -1,9 +1,17 @@
 use anyhow::Result;
 use data::exceldb;
-use sonettobuf::{ActEffect, FightEntityInfo};
+use sonettobuf::effect_type_enum::EffectType;
+use sonettobuf::{
+    ActEffect, BuffInfo, FightEntityInfo, FightHurtInfo, FightStep, fight_hurt_info, fight_step,
+};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicI64, Ordering};
 
-use super::effects::effect_types::EffectType;
+use crate::state::battle::manager::buff_mgr::BuffMgr;
+
+use super::utils::VfxConfig;
+
+static BUFF_UID_COUNTER: AtomicI64 = AtomicI64::new(1000);
 
 pub struct SkillExecutor {
     entities: HashMap<i64, FightEntityInfo>,
@@ -19,69 +27,134 @@ impl SkillExecutor {
         caster_uid: i64,
         target_uid: i64,
         skill_id: i32,
-    ) -> Result<Vec<ActEffect>> {
+        buff_mgr: &BuffMgr,
+    ) -> Result<FightStep> {
         let mut effects = Vec::new();
         let game_data = exceldb::get();
 
         let skill_data = game_data.skill_effect.iter().find(|s| s.id == skill_id);
 
+        tracing::warn!("=== EXECUTING SKILL {} ===", skill_id);
+
+        let mut any_behavior_defined = false;
+
+        // Process all 20 behavior slots
         for i in 1..=20 {
             let condition = self.get_condition(skill_id, i);
             let behavior = self.get_behavior(skill_id, i);
-            let behavior_target = self.get_behavior_target(skill_id, i);
+            if !behavior.is_empty() {
+                any_behavior_defined = true;
+            }
 
             if behavior.is_empty() {
                 continue;
             }
 
+            let behavior_target = self.get_behavior_target(skill_id, i);
+            let condition_target = self.get_condition_target(skill_id, i);
+            // 999 = inherit condition target (passive semantics)
+            let effective_target = if behavior_target == 999 {
+                condition_target
+            } else {
+                behavior_target
+            };
+
+            tracing::warn!(
+                "Behavior slot {}: behavior='{}', target={} (effective={})",
+                i,
+                behavior,
+                behavior_target,
+                effective_target
+            );
+
+            // Check condition if present
             if !condition.is_empty() {
                 let condition_target = self.get_condition_target(skill_id, i);
-                if !self.check_condition(caster_uid, target_uid, &condition, condition_target) {
+                if !self.check_condition(caster_uid, &condition, condition_target, buff_mgr) {
                     continue;
                 }
             }
 
+            // Execute behavior
             let behavior_effects =
-                self.execute_behavior(caster_uid, target_uid, &behavior, behavior_target)?;
-
+                self.execute_behavior(caster_uid, target_uid, &behavior, effective_target)?;
             effects.extend(behavior_effects);
         }
 
-        if effects.is_empty() {
-            if let Some(skill) = skill_data {
-                if skill.damage_rate > 0 {
-                    tracing::info!(
-                        "Using damageRate fallback for skill {}: {}%",
-                        skill_id,
-                        skill.damage_rate
-                    );
-                    if let Some(damage_effect) = self.calculate_damage_effect(
-                        caster_uid,
-                        target_uid,
-                        skill.damage_rate,
-                        false,
-                    ) {
-                        effects.push(damage_effect);
-                    }
-                }
+        // Fallback to damageRate if no behaviors produced effects
+        if !any_behavior_defined
+            && let Some(skill) = skill_data
+            && skill.damage_rate > 0
+        {
+            tracing::info!(
+                "Using damageRate fallback for skill {}: {}%",
+                skill_id,
+                skill.damage_rate
+            );
+            if let Some(damage_effect) =
+                self.calculate_damage_effect(caster_uid, target_uid, skill.damage_rate, false)
+            {
+                effects.push(damage_effect);
             }
         }
 
-        Ok(effects)
+        Ok(FightStep {
+            act_type: Some(fight_step::ActType::Skill.into()),
+            from_id: Some(caster_uid),
+            to_id: Some(target_uid),
+            act_id: Some(skill_id),
+            act_effect: effects,
+            card_index: Some(0),
+            support_hero_id: Some(0),
+            fake_timeline: Some(false),
+        })
     }
 
     fn check_condition(
         &self,
-        _caster_uid: i64,
-        _target_uid: i64,
-        _condition: &str,
+        caster_uid: i64,
+        condition: &str,
         condition_target: i32,
+        buff_mgr: &BuffMgr,
     ) -> bool {
-        // Self-target conditions pass for now
-        if condition_target == 103 {
+        if condition.is_empty() {
             return true;
         }
-        true
+
+        let parts: Vec<&str> = condition.split('#').collect();
+        let cond_id: i32 = parts[0].parse().unwrap_or(0);
+
+        match cond_id {
+            203 => true,
+            208 => true, // always true
+
+            57210 => {
+                // has buff
+                let buff_id: i32 = parts.get(1).and_then(|v| v.parse().ok()).unwrap_or(0);
+
+                match condition_target {
+                    101 | 103 => {
+                        // all allies must have buff
+                        self.entities
+                            .values()
+                            .filter(|e| e.team_type == self.entities[&caster_uid].team_type)
+                            .all(|e| buff_mgr.has_buff(e.uid.unwrap(), buff_id))
+                    }
+                    _ => false,
+                }
+            }
+
+            19210 => {
+                // does NOT have buff
+                let buff_id: i32 = parts.get(1).and_then(|v| v.parse().ok()).unwrap_or(0);
+                !buff_mgr.has_buff(caster_uid, buff_id)
+            }
+
+            _ => {
+                tracing::warn!("Unknown condition: {}", condition);
+                false
+            }
+        }
     }
 
     fn execute_behavior(
@@ -93,7 +166,7 @@ impl SkillExecutor {
     ) -> Result<Vec<ActEffect>> {
         let game_data = exceldb::get();
 
-        // Parse behavior: "id#param1#param2#param3"
+        // Parse behavior: "id#param1#param2#param3..."
         let parts: Vec<&str> = behavior.split('#').collect();
         if parts.is_empty() {
             return Ok(vec![]);
@@ -101,7 +174,7 @@ impl SkillExecutor {
 
         let behavior_id: i32 = parts[0].parse().unwrap_or(0);
         let param1: i32 = parts.get(1).and_then(|p| p.parse().ok()).unwrap_or(0);
-        let param3: i32 = parts.get(3).and_then(|p| p.parse().ok()).unwrap_or(0);
+        let param2: i32 = parts.get(2).and_then(|p| p.parse().ok()).unwrap_or(0);
 
         let behavior_type = game_data
             .skill_behavior
@@ -110,151 +183,212 @@ impl SkillExecutor {
             .map(|b| b.r#type.as_str())
             .unwrap_or("Unknown");
 
-        let resolved_target = self.resolve_target(caster_uid, target_uid, behavior_target);
+        let mut targets = self.resolve_targets(caster_uid, target_uid, behavior_target);
 
-        tracing::debug!(
-            "Behavior {} ({}): caster={}, target={}, param={}",
+        tracing::warn!(
+            "Behavior {} ({}): caster={}, targets={:?}, p1={}, p2={}",
             behavior_id,
             behavior_type,
             caster_uid,
-            resolved_target,
-            param1
+            targets,
+            param1,
+            param2
         );
 
-        let effects = match behavior_type {
-            "Damage" | "Damage2" => {
-                if let Some(effect) =
-                    self.calculate_damage_effect(caster_uid, resolved_target, param1, false)
-                {
-                    vec![effect]
-                } else {
-                    vec![]
-                }
-            }
-            "Heal" | "HealCantCrit" => {
-                if let Some(effect) =
-                    self.calculate_heal_effect(caster_uid, resolved_target, param1, false)
-                {
-                    vec![effect]
-                } else {
-                    vec![]
-                }
-            }
-            "HealByTwoAttr" => {
-                // params: #min#max#attr1_percent#?#target#attr2_percent
-                let attr1_percent = param3 as f32 / 1000.0; // 250 -> 0.25 (25%)
-                let attr2_percent = parts
-                    .get(6)
-                    .and_then(|p| p.parse::<i32>().ok())
-                    .unwrap_or(0) as f32
-                    / 1000.0; // 200 -> 0.20 (20%)
-
-                let caster = self.entities.get(&caster_uid);
-                let target = self.entities.get(&resolved_target);
-
-                if let (Some(caster), Some(target)) = (caster, target) {
-                    // First attribute: target's missing HP
-                    let target_current_hp = target.current_hp.unwrap_or(0);
-                    let target_max_hp = target
-                        .attr
-                        .as_ref()
-                        .and_then(|a| a.hp)
-                        .unwrap_or(target_current_hp);
-                    let missing_hp = target_max_hp - target_current_hp;
-                    let heal_from_missing = (missing_hp as f32 * attr1_percent) as i32;
-
-                    // Second attribute: caster's max HP
-                    let caster_max_hp = caster.attr.as_ref().and_then(|a| a.hp).unwrap_or(1000);
-                    let heal_from_caster_hp = (caster_max_hp as f32 * attr2_percent) as i32;
-
-                    let total_heal = heal_from_missing + heal_from_caster_hp;
-
-                    tracing::debug!(
-                        "HealByTwoAttr: {}% missing HP ({}) + {}% caster max HP ({}) = {} total heal",
-                        attr1_percent * 100.0,
-                        heal_from_missing,
-                        attr2_percent * 100.0,
-                        heal_from_caster_hp,
-                        total_heal
-                    );
-
-                    vec![self.create_heal_effect(resolved_target, total_heal, false)]
-                } else {
-                    vec![]
-                }
-            }
-            "AddBuff" | "AddBuffRound" | "AddBuffRound2" | "ConsumeBloodAddBuff" => {
-                vec![self.create_buff_effect(caster_uid, resolved_target, param1)]
-            }
-            "AddExPoint" => {
-                vec![self.create_simple_effect(resolved_target, EffectType::AddExPoint, param1)]
-            }
-            "Purify1" | "Purify2" => {
-                vec![self.create_simple_effect(resolved_target, EffectType::Purify, param1)]
-            }
-            "Bloodlust" => {
-                vec![self.create_simple_effect(resolved_target, EffectType::Bloodlust, param1)]
-            }
-            "AverageLife" => {
-                vec![self.create_simple_effect(resolved_target, EffectType::AverageLife, param1)]
-            }
-            "BloodPoolValueChange" => {
-                vec![self.create_simple_effect(
-                    resolved_target,
-                    EffectType::BloodPoolValueChange,
-                    param1,
-                )]
-            }
-            "Detonate" | "Detonate2" => {
-                if let Some(effect) =
-                    self.calculate_damage_effect(caster_uid, resolved_target, param1, false)
-                {
-                    vec![effect]
-                } else {
-                    vec![]
-                }
+        match behavior_type {
+            "LostLife" | "Bloodlust" | "RaspberryAddCount" | "AttrFix" | "AttrFixExPoint"
+            | "AttrFixBuff" | "SkillRateUp" | "SkillRateUp1" | "SkillRateUp2"
+            | "SkillRateUpExPoint" | "SkillPowerUp" => {
+                targets = vec![caster_uid];
             }
 
-            "AttrFix" | "AttrFixExPoint" | "AttrFixBuff" | "SkillRateUp" | "SkillRateUp1"
-            | "SkillRateUp2" | "SkillRateUpExPoint" | "SkillPowerUp" | "RaspberryAddCount" => {
-                tracing::debug!("Passive modifier, no immediate effect");
-                vec![]
-            }
-            // Not yet implemented
-            "DecrDurationAndCountBuffType"
-            | "DecrDurationAndCountBuffTypeId"
-            | "DecrDurationAndCountBuffTypeGroup" => {
-                tracing::debug!("Buff manipulation not yet implemented");
-                vec![]
-            }
-            "LostLife" => {
-                let caster = self.entities.get(&caster_uid);
-                if let Some(caster) = caster {
-                    let current_hp = caster.current_hp.unwrap_or(0);
-                    let hp_lost = (current_hp as f32 * 0.10) as i32;
+            _ => {}
+        }
 
-                    let mut effects = vec![self.create_damage_effect(caster_uid, hp_lost, false)];
+        let mut effects = Vec::new();
 
-                    if let Some(enemy_dmg) = self.calculate_damage_effect(
-                        caster_uid,
-                        resolved_target,
-                        hp_lost * 12 / 10,
-                        false,
-                    ) {
-                        effects.push(enemy_dmg);
+        for target in targets {
+            match behavior_type {
+                "Damage" | "Damage2" | "Detonate" | "Detonate2" => {
+                    if let Some(effect) =
+                        self.calculate_damage_effect(caster_uid, target, param1, false)
+                    {
+                        effects.push(effect);
                     }
-                    effects
-                } else {
-                    vec![]
+                }
+
+                "Heal" | "HealCantCrit" => {
+                    if let Some(effect) =
+                        self.calculate_heal_effect(caster_uid, target, param1, false)
+                    {
+                        effects.push(effect);
+                    }
+                }
+
+                "HealByTwoAttr" => {
+                    effects.extend(self.execute_heal_by_two_attr(caster_uid, target, &parts)?);
+                }
+
+                "AddBuff"
+                | "AddBuffRound"
+                | "AddBuffRound2"
+                | "ConsumeBloodAddBuff"
+                | "CreateAdditionalDamageAddBuff" => {
+                    effects.push(self.create_buff_effect(caster_uid, target, param1));
+                }
+
+                "AddExPoint" => {
+                    effects.push(ActEffect {
+                        effect_type: Some(EffectType::Addexpoint as i32),
+                        target_id: Some(target),
+                        effect_num: Some(param1),
+                        ..Default::default()
+                    });
+                }
+
+                "Purify1" | "Purify2" => {
+                    effects.push(ActEffect {
+                        effect_type: Some(EffectType::Purify as i32),
+                        target_id: Some(target),
+                        effect_num: Some(param1),
+                        ..Default::default()
+                    });
+                }
+
+                "Bloodlust" => {
+                    effects.push(ActEffect {
+                        effect_type: Some(EffectType::Bloodlust as i32),
+                        target_id: Some(target),
+                        effect_num: Some(param1),
+                        ..Default::default()
+                    });
+                }
+
+                "AverageLife" => {
+                    effects.push(ActEffect {
+                        effect_type: Some(EffectType::Averagelife as i32),
+                        target_id: Some(target),
+                        ..Default::default()
+                    });
+                }
+
+                "BloodPoolValueChange" => {
+                    effects.push(ActEffect {
+                        effect_type: Some(EffectType::Bloodpoolvaluechange as i32),
+                        target_id: Some(target),
+                        effect_num: Some(param1),
+                        effect_num1: Some(param2),
+                        ..Default::default()
+                    });
+                }
+
+                "LostLife" => {
+                    effects.extend(self.execute_lost_life(caster_uid, target, &parts)?);
+                }
+
+                // Passive-only behaviors (no immediate effects)
+                "AttrFix" | "AttrFixExPoint" | "AttrFixBuff" | "SkillRateUp" | "SkillRateUp1"
+                | "SkillRateUp2" | "SkillRateUpExPoint" | "SkillPowerUp" | "RaspberryAddCount" => {
+                    tracing::warn!("Passive modifier behavior: {}", behavior_type);
+                }
+
+                // Not implemented yet
+                "DecrDurationAndCountBuffType"
+                | "DecrDurationAndCountBuffTypeId"
+                | "DecrDurationAndCountBuffTypeGroup" => {
+                    tracing::warn!("Buff manipulation not implemented: {}", behavior_type);
+                }
+
+                _ => {
+                    tracing::warn!("Unknown behavior type: {}", behavior_type);
                 }
             }
-            _ => {
-                tracing::warn!("Unknown behavior type: {}", behavior_type);
-                vec![]
-            }
-        };
+        }
 
         Ok(effects)
+    }
+
+    fn execute_heal_by_two_attr(
+        &self,
+        caster_uid: i64,
+        target_uid: i64,
+        parts: &[&str],
+    ) -> Result<Vec<ActEffect>> {
+        // params: #min#max#attr1_percent#?#target#attr2_percent
+        let attr1_percent = parts
+            .get(3)
+            .and_then(|p| p.parse::<i32>().ok())
+            .unwrap_or(0) as f32
+            / 1000.0;
+        let attr2_percent = parts
+            .get(6)
+            .and_then(|p| p.parse::<i32>().ok())
+            .unwrap_or(0) as f32
+            / 1000.0;
+
+        let caster = self.entities.get(&caster_uid);
+        let target = self.entities.get(&target_uid);
+
+        if let (Some(caster), Some(target)) = (caster, target) {
+            // First attribute: target's missing HP
+            let target_current_hp = target.current_hp.unwrap_or(0);
+            let target_max_hp = target
+                .attr
+                .as_ref()
+                .and_then(|a| a.hp)
+                .unwrap_or(target_current_hp);
+            let missing_hp = target_max_hp - target_current_hp;
+            let heal_from_missing = (missing_hp as f32 * attr1_percent) as i32;
+
+            // Second attribute: caster's max HP
+            let caster_max_hp = caster.attr.as_ref().and_then(|a| a.hp).unwrap_or(1000);
+            let heal_from_caster_hp = (caster_max_hp as f32 * attr2_percent) as i32;
+
+            let total_heal = heal_from_missing + heal_from_caster_hp;
+
+            tracing::info!(
+                "HealByTwoAttr: {}% missing HP ({}) + {}% caster max HP ({}) = {}",
+                attr1_percent * 100.0,
+                heal_from_missing,
+                attr2_percent * 100.0,
+                heal_from_caster_hp,
+                total_heal
+            );
+
+            Ok(vec![self.create_heal_effect(target_uid, total_heal, false)])
+        } else {
+            Ok(vec![])
+        }
+    }
+
+    fn execute_lost_life(
+        &self,
+        _caster_uid: i64,
+        target_uid: i64,
+        parts: &[&str],
+    ) -> Result<Vec<ActEffect>> {
+        let percent = parts
+            .get(2)
+            .and_then(|p| p.parse::<i32>().ok())
+            .unwrap_or(0);
+
+        let target = self.entities.get(&target_uid);
+        let max_hp = target
+            .as_ref()
+            .and_then(|t| {
+                t.attr
+                    .as_ref()
+                    .map(|a| a.hp.unwrap_or(t.current_hp.unwrap_or(0)))
+            })
+            .unwrap_or(0);
+        let loss = max_hp * percent / 1000;
+
+        Ok(vec![ActEffect {
+            effect_type: Some(EffectType::Currenthpchange as i32),
+            target_id: Some(target_uid),
+            effect_num: Some(-loss),
+            ..Default::default()
+        }])
     }
 
     fn calculate_damage_effect(
@@ -270,52 +404,23 @@ impl SkillExecutor {
         // Get stats
         let caster_attack = caster.attr.as_ref()?.attack.unwrap_or(100);
         let target_defense = target.attr.as_ref()?.defense.unwrap_or(50);
-        let _target_mdefense = target.attr.as_ref()?.mdefense.unwrap_or(50);
 
-        // Theoretical Damage = [Total ATK - Enemy Mental OR Reality DEF * (1 - Penetration Rate) * (1 - DEF Reduction)]
-        // * [Critical Damage - Enemy Critical Def]
-        // * [1 + DMG Bonus + DMG Boost - Enemy DMG Reduction]
-        // * [1 + Incantation Might OR Ultimate Might]
-        // * Skill Multiplier
-        // * Afflatus Advantage
-
-        // For now, simplified version:
-        // damage = base_param (skill multiplier) * (attack - defense * 0.5)
-
-        let penetration_rate = 0.0; // TODO: Get from buffs/stats
-        let def_reduction = 0.0; // TODO: Get from buffs
-
-        // Use reality defense for now (could check skill type)
+        // Simplified damage calculation
+        // TODO: Implement full formula with penetration, def reduction, dmg bonus, etc.
+        let penetration_rate = 0.0;
+        let def_reduction = 0.0;
         let effective_defense =
             (target_defense as f32 * (1.0 - penetration_rate) * (1.0 - def_reduction)) as i32;
         let attack_contribution = (caster_attack - effective_defense).max(0);
 
-        // Skill multiplier from base_param (usually a percentage like 1200 = 120%)
         let skill_multiplier = base_param as f32 / 1000.0;
-
-        // Critical damage
         let crit_multiplier = if is_crit { 1.5 } else { 1.0 };
 
-        // DMG bonus/boost (TODO: from buffs)
-        let dmg_bonus = 1.0;
-
-        // Incantation/Ultimate might (TODO: from card type)
-        let might_bonus = 1.0;
-
-        // Afflatus advantage (TODO: from element matching)
-        let afflatus_mult = 1.0;
-
-        let final_damage = (attack_contribution as f32
-            * skill_multiplier
-            * crit_multiplier
-            * dmg_bonus
-            * might_bonus
-            * afflatus_mult) as i32;
-
-        let final_damage = final_damage.max(1); // Minimum 1 damage
+        let final_damage = (attack_contribution as f32 * skill_multiplier * crit_multiplier) as i32;
+        let final_damage = final_damage.max(1);
 
         tracing::debug!(
-            "Damage calc: atk={}, def={}, skill_mult={}, final={}",
+            "Damage calc: atk={}, def={}, mult={}, final={}",
             caster_attack,
             target_defense,
             skill_multiplier,
@@ -333,11 +438,9 @@ impl SkillExecutor {
         is_crit: bool,
     ) -> Option<ActEffect> {
         let caster = self.entities.get(&caster_uid)?;
-
-        // Healing often scales with caster's attack or a specific stat
         let caster_attack = caster.attr.as_ref()?.attack.unwrap_or(100);
 
-        // Heal formula: base + (attack * multiplier)
+        // Simplified heal calculation
         let heal_contribution = (caster_attack as f32 * (base_param as f32 / 100.0)) as i32;
         let final_heal = (base_param + heal_contribution).max(1);
 
@@ -351,90 +454,112 @@ impl SkillExecutor {
         Some(self.create_heal_effect(target_uid, final_heal, is_crit))
     }
 
-    fn resolve_target(&self, caster_uid: i64, target_uid: i64, behavior_target: i32) -> i64 {
+    fn resolve_targets(&self, caster_uid: i64, target_uid: i64, behavior_target: i32) -> Vec<i64> {
         match behavior_target {
-            103 => caster_uid, // Self - buff yourself
-            102 => caster_uid, // Self
-            101 => caster_uid, // Random ally (for now, use caster)
-            1 => target_uid,   // Single target (use skill target)
-            2 => target_uid,   // Random enemy (use skill target)
-            201 => target_uid, // All enemies (for now, use skill target)
-            202 => target_uid, // Random enemies
+            // Self
+            0 | 102 => vec![caster_uid],
+
+            // Explicit selected target (card target)
+            1 | 2 => vec![target_uid],
+
+            // All allies (including self)
+            101 | 103 => self
+                .entities
+                .values()
+                .filter(|e| e.team_type == self.entities[&caster_uid].team_type)
+                .filter_map(|e| e.uid)
+                .collect(),
+
+            // All enemies
+            201 | 202 => self
+                .entities
+                .values()
+                .filter(|e| e.team_type != self.entities[&caster_uid].team_type)
+                .filter_map(|e| e.uid)
+                .collect(),
+
+            999 => {
+                if target_uid != 0 && self.entities.contains_key(&target_uid) {
+                    vec![target_uid]
+                } else {
+                    tracing::warn!("behavior_target=999 but no valid target; defaulting to self");
+                    vec![caster_uid]
+                }
+            }
+
             _ => {
                 tracing::warn!(
-                    "Unknown behavior_target: {}, using skill target",
+                    "Unknown behavior_target {}, defaulting to caster",
                     behavior_target
                 );
-                target_uid
+                vec![caster_uid]
             }
         }
     }
 
-    // Helper to create simple effects
-    fn create_simple_effect(
-        &self,
-        target_id: i64,
-        effect_type: EffectType,
-        value: i32,
-    ) -> ActEffect {
+    fn create_damage_effect(&self, target_id: i64, damage: i32, is_crit: bool) -> ActEffect {
         ActEffect {
+            effect_type: Some(if is_crit {
+                EffectType::Crit as i32
+            } else {
+                EffectType::Damage as i32
+            }), // CRIT or DAMAGE
             target_id: Some(target_id),
-            effect_type: Some(effect_type.to_i32()),
-            effect_num: Some(value),
-            buff: None,
-            entity: None,
-            config_effect: Some(0),
-            buff_act_id: Some(0),
-            reserve_id: Some(0),
-            reserve_str: Some(String::new()),
-            summoned: None,
-            magic_circle: None,
-            card_info: None,
-            card_info_list: vec![],
-            team_type: Some(0),
-            fight_step: None,
-            assist_boss_info: None,
-            effect_num1: Some(0),
-            emitter_info: None,
-            player_finisher_info: None,
-            power_info: None,
-            card_heat_value: None,
-            fight_tasks: vec![],
-            fight: None,
-            buff_act_info: None,
-            hurt_info: None,
+            effect_num: Some(damage),
+            config_effect: Some(VfxConfig::Damage as i32), // Standard damage VFX
+            hurt_info: Some(FightHurtInfo {
+                damage: Some(damage),
+                reduce_hp: Some(damage),
+                reduce_shield: Some(0),
+                career_restraint: Some(false),
+                critical: Some(is_crit),
+                assassinate: Some(false),
+                hurt_effect: Some(if is_crit {
+                    EffectType::Crit as i32
+                } else {
+                    EffectType::Damage as i32
+                }),
+                damage_from_type: Some(fight_hurt_info::DamageFromType::SkillEffect.into()),
+                config_effect: Some(VfxConfig::Damage as i32),
+                effect_id: Some(0),
+                skill_id: Some(0),
+                from_uid: Some(0),
+                ..Default::default()
+            }),
+            ..Default::default()
         }
     }
 
-    fn create_damage_effect(&self, target_id: i64, damage: i32, is_crit: bool) -> ActEffect {
-        let effect_type = if is_crit {
-            EffectType::Crit
-        } else {
-            EffectType::Damage
-        };
-
-        self.create_simple_effect(target_id, effect_type, damage)
-    }
-
     fn create_heal_effect(&self, target_id: i64, heal: i32, is_crit: bool) -> ActEffect {
-        let effect_type = if is_crit {
-            EffectType::HealCrit
-        } else {
-            EffectType::Heal
-        };
-
-        self.create_simple_effect(target_id, effect_type, heal)
+        ActEffect {
+            effect_type: Some(if is_crit {
+                EffectType::Healcrit as i32
+            } else {
+                EffectType::Heal as i32
+            }), // HEALCRIT or HEAL
+            target_id: Some(target_id),
+            effect_num: Some(heal),
+            config_effect: Some(VfxConfig::Heal as i32), // Heal VFX
+            ..Default::default()
+        }
     }
 
     fn create_buff_effect(&self, caster_uid: i64, target_id: i64, buff_id: i32) -> ActEffect {
+        let duration = data::exceldb::get()
+            .skill_buff
+            .iter()
+            .find(|b| b.id == buff_id)
+            .map(|b| b.during_time)
+            .unwrap_or(0);
+
         ActEffect {
+            effect_type: Some(EffectType::Buffadd as i32),
             target_id: Some(target_id),
-            effect_type: Some(EffectType::BuffAdd.to_i32()),
             effect_num: Some(buff_id),
-            buff: Some(sonettobuf::BuffInfo {
+            buff: Some(BuffInfo {
                 buff_id: Some(buff_id),
-                duration: Some(0), // TODO: Load from buff table
-                uid: Some(0),      // TODO: Generate unique UID
+                duration: Some(duration),
+                uid: Some(BUFF_UID_COUNTER.fetch_add(1, Ordering::SeqCst)),
                 ex_info: Some(0),
                 from_uid: Some(caster_uid),
                 count: Some(0),
@@ -443,27 +568,7 @@ impl SkillExecutor {
                 act_common_params: Some(String::new()),
                 act_info: vec![],
             }),
-            entity: None,
-            config_effect: Some(0),
-            buff_act_id: Some(0),
-            reserve_id: Some(0),
-            reserve_str: Some(String::new()),
-            summoned: None,
-            magic_circle: None,
-            card_info: None,
-            card_info_list: vec![],
-            team_type: Some(0),
-            fight_step: None,
-            assist_boss_info: None,
-            effect_num1: Some(0),
-            emitter_info: None,
-            player_finisher_info: None,
-            power_info: None,
-            card_heat_value: None,
-            fight_tasks: vec![],
-            fight: None,
-            buff_act_info: None,
-            hurt_info: None,
+            ..Default::default()
         }
     }
 

@@ -75,16 +75,16 @@ fn parse_reward_string(reward_str: &str, multiplication: i32) -> Vec<(u32, u32, 
 
     for part in reward_str.split('|') {
         let components: Vec<&str> = part.split('#').collect();
-        if components.len() >= 3 {
-            if let (Ok(reward_type), Ok(reward_id), Ok(base_amount)) = (
+        if components.len() >= 3
+            && let (Ok(reward_type), Ok(reward_id), Ok(base_amount)) = (
                 components[0].parse::<u32>(),
                 components[1].parse::<u32>(),
                 components[2].parse::<i32>(),
-            ) {
-                // Apply multiplication (4x for example)
-                let final_amount = base_amount * multiplication;
-                rewards.push((reward_type, reward_id, final_amount));
-            }
+            )
+        {
+            // Apply multiplication (4x for example)
+            let final_amount = base_amount * multiplication;
+            rewards.push((reward_type, reward_id, final_amount));
         }
     }
 

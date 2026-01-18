@@ -1,5 +1,7 @@
 // Auto-generated module declarations
 
+pub mod activity174_role;
+pub mod activity191_role;
 pub mod antique;
 pub mod battle;
 pub mod bgm_switch;
@@ -8,6 +10,7 @@ pub mod chapter;
 pub mod character;
 pub mod character_cosume;
 pub mod character_destiny;
+pub mod character_destiny_facets;
 pub mod character_level;
 pub mod character_rank;
 pub mod character_rank_replace;
@@ -33,6 +36,7 @@ pub mod open;
 pub mod power_item;
 pub mod skill;
 pub mod skill_behavior;
+pub mod skill_buff;
 pub mod skill_effect;
 pub mod skill_ex_level;
 pub mod skill_passive_level;
@@ -48,6 +52,8 @@ pub mod talent_style_cost;
 use std::sync::OnceLock;
 
 pub struct GameDB {
+    pub activity174_role: activity174_role::Activity174RoleTable,
+    pub activity191_role: activity191_role::Activity191RoleTable,
     pub antique: antique::AntiqueTable,
     pub battle: battle::BattleTable,
     pub bgm_switch: bgm_switch::BgmSwitchTable,
@@ -56,6 +62,7 @@ pub struct GameDB {
     pub character: character::CharacterTable,
     pub character_cosume: character_cosume::CharacterCosumeTable,
     pub character_destiny: character_destiny::CharacterDestinyTable,
+    pub character_destiny_facets: character_destiny_facets::CharacterDestinyFacetsTable,
     pub character_level: character_level::CharacterLevelTable,
     pub character_rank: character_rank::CharacterRankTable,
     pub character_rank_replace: character_rank_replace::CharacterRankReplaceTable,
@@ -81,6 +88,7 @@ pub struct GameDB {
     pub power_item: power_item::PowerItemTable,
     pub skill: skill::SkillTable,
     pub skill_behavior: skill_behavior::SkillBehaviorTable,
+    pub skill_buff: skill_buff::SkillBuffTable,
     pub skill_effect: skill_effect::SkillEffectTable,
     pub skill_ex_level: skill_ex_level::SkillExLevelTable,
     pub skill_passive_level: skill_passive_level::SkillPassiveLevelTable,
@@ -96,6 +104,12 @@ pub struct GameDB {
 
 impl GameDB {
     pub fn load(data_dir: &str) -> anyhow::Result<Self> {
+        let activity174_role = activity174_role::Activity174RoleTable::load(
+            &format!("{}/activity174_role.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load activity174_role.json: {}", e))?;
+        let activity191_role = activity191_role::Activity191RoleTable::load(
+            &format!("{}/activity191_role.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load activity191_role.json: {}", e))?;
         let antique = antique::AntiqueTable::load(
             &format!("{}/antique.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load antique.json: {}", e))?;
@@ -120,6 +134,9 @@ impl GameDB {
         let character_destiny = character_destiny::CharacterDestinyTable::load(
             &format!("{}/character_destiny.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load character_destiny.json: {}", e))?;
+        let character_destiny_facets = character_destiny_facets::CharacterDestinyFacetsTable::load(
+            &format!("{}/character_destiny_facets.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load character_destiny_facets.json: {}", e))?;
         let character_level = character_level::CharacterLevelTable::load(
             &format!("{}/character_level.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load character_level.json: {}", e))?;
@@ -195,6 +212,9 @@ impl GameDB {
         let skill_behavior = skill_behavior::SkillBehaviorTable::load(
             &format!("{}/skill_behavior.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load skill_behavior.json: {}", e))?;
+        let skill_buff = skill_buff::SkillBuffTable::load(
+            &format!("{}/skill_buff.json", data_dir)
+        ).map_err(|e| anyhow::anyhow!("Failed to load skill_buff.json: {}", e))?;
         let skill_effect = skill_effect::SkillEffectTable::load(
             &format!("{}/skill_effect.json", data_dir)
         ).map_err(|e| anyhow::anyhow!("Failed to load skill_effect.json: {}", e))?;
@@ -230,6 +250,8 @@ impl GameDB {
         ).map_err(|e| anyhow::anyhow!("Failed to load talent_style_cost.json: {}", e))?;
 
         Ok(Self {
+            activity174_role,
+            activity191_role,
             antique,
             battle,
             bgm_switch,
@@ -238,6 +260,7 @@ impl GameDB {
             character,
             character_cosume,
             character_destiny,
+            character_destiny_facets,
             character_level,
             character_rank,
             character_rank_replace,
@@ -263,6 +286,7 @@ impl GameDB {
             power_item,
             skill,
             skill_behavior,
+            skill_buff,
             skill_effect,
             skill_ex_level,
             skill_passive_level,

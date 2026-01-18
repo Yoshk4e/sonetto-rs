@@ -191,7 +191,7 @@ pub async fn on_hero_talent_up(
         conn.notify(
             CmdId::HeroHeroUpdatePushCmd,
             HeroUpdatePush {
-                hero_updates: vec![hero_info.into()],
+                hero_updates: vec![hero_info],
             },
         )
         .await?;
