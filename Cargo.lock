@@ -247,6 +247,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "codegen"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "heck",
+ "once_cell",
+ "serde",
+ "serde_json",
+ "walkdir",
+]
+
+[[package]]
 name = "common"
 version = "0.1.0"
 dependencies = [
@@ -364,26 +376,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "data"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "heck",
- "once_cell",
- "serde",
- "serde_json",
- "walkdir",
-]
-
-[[package]]
 name = "database"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "bcrypt",
  "chrono",
+ "codegen",
  "common",
- "data",
  "protocol",
  "serde",
  "serde_json",
@@ -652,9 +652,9 @@ dependencies = [
  "byteorder",
  "bytes",
  "chrono",
+ "codegen",
  "common",
  "dashmap",
- "data",
  "database",
  "once_cell",
  "prost",
@@ -1797,8 +1797,8 @@ dependencies = [
  "axum",
  "axum-server",
  "chrono",
+ "codegen",
  "common",
- "data",
  "database",
  "flate2",
  "gameserver",

@@ -3,3 +3,8 @@
 sonetto-rs.zip
 /data/excel2json/
 /db
+assets/*
+!assets/starter/
+!assets/starter/**
+!assets/static/
+!assets/static/**

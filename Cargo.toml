@@ -1,5 +1,5 @@
 [workspace]
-members = ["common", "database", "gameserver", "protocol", "sdkserver", "data"]
+members = ["common", "database", "gameserver", "protocol", "sdkserver", "lib/*"]
 resolver = "2"
 
 [workspace.package]
@@ -59,12 +59,18 @@ tracing = "0.1.44"
 tracing-subscriber = "0.3.22"
 
 
+# Code Generation
+proc-macro2 = "1.0"
+syn = "2.0"
+prettyplease = "0.2"
+quote = "1.0"
+
+codegen = { path = "lib/codegen" }
 common = { path = "common" }
 database = { path = "database" }
 gameserver = { path = "gameserver" }
 protocol = { path = "protocol" }
 sdkserver = { path = "sdkserver" }
-data = { path = "data" }
 
 [profile.release]
 strip = true      # Automatically strip symbols from the binary.
