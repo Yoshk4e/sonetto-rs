@@ -2,6 +2,7 @@ use crate::{
     network::client::handle_client,
     state::{AppState, ConnectionContext},
 };
+use ::config::configs;
 use common::{config, excel_data_directory, game_port, host, init_config, init_tracing};
 use database::{DatabaseSettings, connect_to, run_migrations};
 use std::path::PathBuf;
@@ -49,7 +50,7 @@ async fn main() -> anyhow::Result<()> {
     run_migrations(&db).await?;
 
     info!("Loading game data...");
-    config::configs::init(excel_data_directory().to_str().unwrap())?;
+    configs::init(excel_data_directory().to_str().unwrap())?;
     info!("Game data loaded");
 
     let state = Arc::new(AppState::new(db));
