@@ -27,6 +27,7 @@ Sonetto-rs is a Rust implementation of a server emulator (PS) for *Reverse: 1999
 * [Plans / Roadmap](#plans--roadmap)
 * [Todo](#todo)
 * [GM Commands](#gm-commands)
+* [Discord](#discord)
 
 ---
 
@@ -204,5 +205,10 @@ Short-term:
 ## Credits
 
 Thanks to the upstream contributors and to Luotianyi-0712 for prebuilt artifacts and CI.
+
+---
+
+## Discord
+Join our [discord](https://discord.gg/CQCT2jVHZP)
 
 ---
