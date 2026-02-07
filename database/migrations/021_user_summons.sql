@@ -81,4 +81,3 @@ CREATE TABLE user_sp_pool_reward_progress (
 CREATE INDEX idx_user_summon_pools ON user_summon_pools(user_id);
 CREATE INDEX idx_user_lucky_bags ON user_lucky_bags(user_id);
 CREATE INDEX idx_user_sp_pool_info ON user_sp_pool_info(user_id);
-

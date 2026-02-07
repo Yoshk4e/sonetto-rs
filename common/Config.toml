@@ -11,3 +11,38 @@ static_data = "./data/static"
 
 [database]
 path = "./db/sonetto.db"
+
+[[banners]]
+id = 1
+open_time  = "2023-01-01 05:00:00"
+close_time = "2031-12-31 04:59:59"
+
+[[banners]]
+id = 2
+open_time  = "2023-01-01 05:00:00"
+close_time = "2031-12-31 04:59:59"
+
+[[banners]]
+id = 32161
+open_time  = "2026-01-20 05:00:00"
+close_time = "2026-03-05 04:59:59"
+
+[[banners]]
+id = 32181
+open_time  = "2026-01-20 05:00:00"
+close_time = "2026-03-05 04:59:59"
+
+[[banners]]
+id = 32151
+open_time  = "2026-01-20 05:00:00"
+close_time = "2026-02-12 04:59:59"
+
+[[banners]]
+id = 32111
+open_time  = "2026-01-27 05:00:00"
+close_time = "2026-02-10 04:59:59"
+
+[[banners]]
+id = 32141
+open_time  = "2026-02-01 05:00:00"
+close_time = "2026-02-15 04:59:59"

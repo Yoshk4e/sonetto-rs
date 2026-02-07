@@ -40,6 +40,15 @@ pub enum AppError {
 
     #[error("Insufficient funds")]
     InsufficientCurrency,
+
+    #[error("Banner not found")]
+    BannerNotFound,
+
+    #[error("Banner is not yet active")]
+    BannerNotYetActive,
+
+    #[error("Banner has expired")]
+    BannerExpired,
 }
 
 impl From<std::str::Utf8Error> for AppError {

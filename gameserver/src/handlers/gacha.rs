@@ -31,15 +31,16 @@ pub async fn on_get_summon_info(
     ctx: Arc<Mutex<ConnectionContext>>,
     req: ClientPacket,
 ) -> Result<(), AppError> {
-    let (stats, pool_infos) = {
+    let (player_id, db) = {
         let conn = ctx.lock().await;
-        let player_id = conn.player_id.ok_or(AppError::NotLoggedIn)?;
-
-        let stats = get_summon_stats(&conn.state.db, player_id).await?;
-        let pools = get_summon_pool_infos(&conn.state.db, player_id).await?;
-
-        (stats, pools)
+        (
+            conn.player_id.ok_or(AppError::NotLoggedIn)?,
+            conn.state.db.clone(),
+        )
     };
+
+    let stats = get_summon_stats(&db, player_id).await?;
+    let pool_infos = get_summon_pool_infos(&db, player_id).await?;
 
     let reply = GetSummonInfoReply {
         free_equip_summon: Some(stats.free_equip_summon),
@@ -52,6 +53,7 @@ pub async fn on_get_summon_info(
     let mut conn = ctx.lock().await;
     conn.send_reply(CmdId::GetSummonInfoCmd, reply, 0, req.up_tag)
         .await?;
+
     Ok(())
 }
 

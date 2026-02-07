@@ -108,3 +108,12 @@ impl From<SummonPoolInfo> for sonettobuf::SummonPoolInfo {
         }
     }
 }
+
+#[derive(Debug, Clone, FromRow)]
+pub struct BannerSchedule {
+    pub pool_id: i32,
+    pub online_time: i32,
+    pub offline_time: i32,
+    pub created_at: i32,
+    pub updated_at: i32,
+}

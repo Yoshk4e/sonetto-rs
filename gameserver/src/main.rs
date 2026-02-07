@@ -4,7 +4,9 @@ use crate::{
 };
 use ::config::configs;
 use common::{config, excel_data_directory, game_port, host, init_config, init_tracing};
-use database::{DatabaseSettings, connect_to, run_migrations};
+use database::{
+    DatabaseSettings, connect_to, db::game::summon::sync_banner_schedule, run_migrations,
+};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -48,6 +50,8 @@ async fn main() -> anyhow::Result<()> {
 
     let db = connect_to(&db_settings).await?;
     run_migrations(&db).await?;
+
+    sync_banner_schedule(&db, &cfg.banners).await?;
 
     info!("Loading game data...");
     configs::init(excel_data_directory().to_str().unwrap())?;

@@ -1,5 +1,7 @@
 use crate::models::game::summon::*;
 use anyhow::Result;
+use chrono::{NaiveDateTime, TimeZone, Utc};
+use common::config::Banner;
 use sonettobuf::SummonResult;
 use sqlx::SqlitePool;
 
@@ -20,15 +22,31 @@ pub async fn get_summon_stats(pool: &SqlitePool, user_id: i64) -> Result<UserSum
 }
 
 pub async fn get_summon_pool_infos(pool: &SqlitePool, user_id: i64) -> Result<Vec<SummonPoolInfo>> {
-    let pools = sqlx::query_as::<_, UserSummonPool>(
-        "SELECT * FROM user_summon_pools WHERE user_id = ? ORDER BY pool_id",
+    let now = chrono::Utc::now().timestamp() as i32;
+    let banners = sqlx::query_as::<_, BannerSchedule>(
+        "SELECT pool_id, online_time, offline_time, created_at, updated_at
+         FROM banner_schedule
+         WHERE online_time <= ? AND offline_time > ?
+         ORDER BY pool_id",
     )
-    .bind(user_id)
+    .bind(now)
+    .bind(now)
     .fetch_all(pool)
     .await?;
 
     let mut result = Vec::new();
-    for pool_data in pools {
+
+    for banner in banners {
+        ensure_user_summon_pool(pool, user_id, &banner).await?;
+
+        let pool_data = sqlx::query_as::<_, UserSummonPool>(
+            "SELECT * FROM user_summon_pools WHERE user_id = ? AND pool_id = ?",
+        )
+        .bind(user_id)
+        .bind(banner.pool_id)
+        .fetch_one(pool)
+        .await?;
+
         // Get lucky bag info
         let lucky_bag = get_lucky_bag_info(pool, user_id, pool_data.pool_id).await?;
 
@@ -43,6 +61,79 @@ pub async fn get_summon_pool_infos(pool: &SqlitePool, user_id: i64) -> Result<Ve
     }
 
     Ok(result)
+}
+
+async fn ensure_user_summon_pool(
+    db: &SqlitePool,
+    user_id: i64,
+    banner: &BannerSchedule,
+) -> anyhow::Result<()> {
+    let now = common::time::ServerTime::now_ms();
+
+    sqlx::query(
+        r#"
+        INSERT INTO user_summon_pools (
+            user_id,
+            pool_id,
+            online_time,
+            offline_time,
+            created_at,
+            updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(user_id, pool_id) DO NOTHING
+        "#,
+    )
+    .bind(user_id)
+    .bind(banner.pool_id)
+    .bind(banner.online_time)
+    .bind(banner.offline_time)
+    .bind(now)
+    .bind(now)
+    .execute(db)
+    .await?;
+
+    Ok(())
+}
+
+pub async fn sync_banner_schedule(db: &SqlitePool, banners: &[Banner]) -> anyhow::Result<()> {
+    let now = Utc::now().timestamp() as i32;
+
+    for banner in banners {
+        let online_time = parse_ts_seconds(&banner.open_time)?;
+        let offline_time = parse_ts_seconds(&banner.close_time)?;
+
+        sqlx::query(
+            r#"
+            INSERT INTO banner_schedule (
+                pool_id,
+                online_time,
+                offline_time,
+                created_at,
+                updated_at
+            )
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(pool_id) DO UPDATE SET
+                online_time  = excluded.online_time,
+                offline_time = excluded.offline_time,
+                updated_at   = excluded.updated_at
+            "#,
+        )
+        .bind(banner.id)
+        .bind(online_time)
+        .bind(offline_time)
+        .bind(now)
+        .bind(now)
+        .execute(db)
+        .await?;
+    }
+
+    Ok(())
+}
+
+fn parse_ts_seconds(s: &str) -> anyhow::Result<i32> {
+    let dt = NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S")?;
+    Ok(Utc.from_utc_datetime(&dt).timestamp() as i32)
 }
 
 async fn get_lucky_bag_info(
@@ -310,4 +401,20 @@ pub async fn increment_summon_count(
     }
 
     Ok(())
+}
+
+pub async fn get_banner_schedule(
+    db: &SqlitePool,
+    pool_id: i32,
+) -> anyhow::Result<Option<BannerSchedule>> {
+    let result = sqlx::query_as::<_, BannerSchedule>(
+        "SELECT pool_id, online_time, offline_time, created_at, updated_at
+         FROM banner_schedule
+         WHERE pool_id = ?",
+    )
+    .bind(pool_id)
+    .fetch_optional(db)
+    .await?;
+
+    Ok(result)
 }

@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 const CONFIG_TEMPLATE: &str = include_str!("../Config.toml");
 
@@ -8,6 +8,8 @@ pub struct ServerConfig {
     pub server: ServerSettings,
     pub paths: PathConfig,
     pub database: DatabaseConfig,
+    #[serde(rename = "banners")]
+    pub banners: Vec<Banner>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -23,6 +25,13 @@ pub struct PathConfig {
     pub data_dir: PathBuf,
     pub excel_data: PathBuf,
     pub static_data: PathBuf,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Banner {
+    pub id: i32,
+    pub open_time: String,
+    pub close_time: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -86,7 +95,7 @@ impl ServerConfig {
         Self::load(path)
     }
 
-    pub fn resolve_paths(&mut self, config_dir: &PathBuf) -> anyhow::Result<()> {
+    pub fn resolve_paths(&mut self, config_dir: &Path) -> anyhow::Result<()> {
         if self.database.path.is_relative() {
             self.database.path = config_dir.join(&self.database.path);
         }
@@ -123,16 +132,16 @@ impl ServerConfig {
         }
 
         // Create database directory if needed
-        if let Some(parent) = self.database.path.parent() {
-            if !parent.exists() {
-                std::fs::create_dir_all(parent).map_err(|e| {
-                    anyhow::anyhow!(
-                        "Failed to create database directory {}: {}",
-                        parent.display(),
-                        e
-                    )
-                })?;
-            }
+        if let Some(parent) = self.database.path.parent()
+            && !parent.exists()
+        {
+            std::fs::create_dir_all(parent).map_err(|e| {
+                anyhow::anyhow!(
+                    "Failed to create database directory {}: {}",
+                    parent.display(),
+                    e
+                )
+            })?;
         }
 
         Ok(())
