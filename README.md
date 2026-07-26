@@ -1,4 +1,6 @@
-# Sonetto-rs
+# Sonetto-rs (deperecated)
+
+see [enigma](https://github.com/yoncodes/enigma.git)
 
 ### Current supported version: **3.1 (non-steam)**
 
